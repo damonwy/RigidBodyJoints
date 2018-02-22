@@ -18,132 +18,37 @@ typedef Eigen::Triplet<double> ETriplet;
 double inf = numeric_limits<double>::infinity();
 
 RigidBody::RigidBody() {
-
-	ynormal << 0.0, 1.0, 0.0;
-	g << 0, -9.8, 0;
-	xl.resize(6);
-	xu.resize(6);
-	xl << -inf, -inf, -inf, -inf, -inf, -inf;
-	xu << inf, inf, inf, inf, inf, inf;
-
+	this->numRB = 2;
 	I.setIdentity();
 
-	in.load_ply("rectcube");
-	tetrahedralize("pqz", &in, &out);
-	nVerts = out.numberofpoints;
-	nTriFaces = out.numberoftrifaces;
-	nEdges = out.numberofedges;
-
-	mass = 0.1 * nVerts;
-
-	for (int i = 0; i < nVerts; i++) {
-		auto p = make_shared<Particle>();
-		nodes.push_back(p);
-		// positon in the local frame
-		p->x0 << out.pointlist[3 * i], out.pointlist[3 * i + 1], out.pointlist[3 * i + 2];
-		p->v << 0.0, 0.0, 0.0;
-		p->m = 0.1;
-		p->i = i;
+	// Create rigid body structs
+	for (int i = 0; i < numRB; i++) {
+		bodies.push_back(make_shared<RBState>());
 	}
 
-	// Build vertex buffers
-	posBuf.clear();
-	norBuf.clear();
-	texBuf.clear();
-	eleBuf.clear();
+	// Initialize rigid bodies: R,p->E, V, Omega, 
+	VectorXd init_v, init_w, init_p;
+	init_v.resize(3 * numRB);
+	init_w.resize(3 * numRB);
+	init_p.resize(3 * numRB);
 
-	posBuf.resize(nTriFaces * 9);
-	norBuf.resize(nTriFaces * 9);
-	eleBuf.resize(nTriFaces * 3);
+	init_v.setZero();
+	init_w.setZero();
+	init_p << 0, 0, 0, 6, 0, 0;
 
-	M.resize(6, 6);
-	M.setZero();
+	MatrixXd init_R;
+	init_R.resize(3 * numRB, 3);
+	
 
-	E.resize(4, 4);
-	E.setZero();
-
-	EE.resize(4, 4);
-	EE.setZero();
-
-	Phi.resize(6);
-	Phi.setZero();
-
-	PHI.resize(6, 6);
-	PHI.setZero();
-
-	PhiT.resize(6, 6);
-	PhiT.setZero();
-
-	B.resize(6);
-	B.setZero();
-
-	v.resize(nVerts * 3);
-	v.setZero();
-	f.resize(nVerts * 3);
-	f.setZero();
-
-	temp.resize(3, 6);
-	temp.setZero();
-	temp.block(0, 3, 3, 3) = I;
-	sol.resize(6);
-	initParam();
-
-	updatePosNor(E);
-
-	for (int i = 0; i < nTriFaces; i++) {
-		for (int j = 0; j < 3; j++) {
-			eleBuf[3 * i + j] = 3 * i + j;
-		}
+	for (int i = 0; i < numRB; i++) {
+		bodies[i]->setLinearVelocity(init_v.segment<3>(3 * i));
+		bodies[i]->setAngularVelocity(init_w.segment<3>(3 * i));
+		bodies[i]->setRotational(I); // use init_R for different setting
+		bodies[i]->setLocalFrameOrigin(init_p.segment<3>(3 * i));
 	}
-}
+	
 
-void RigidBody::initParam() {
 
-	this->M << mass / 3.0 * 10, 0, 0, 0, 0, 0,
-		0, mass / 3.0 * 2.0, 0, 0, 0, 0,
-		0, 0, mass / 3.0 * 10.0, 0, 0, 0,
-		0, 0, 0, mass, 0, 0,
-		0, 0, 0, 0, mass, 0,
-		0, 0, 0, 0, 0, mass;
-	A_.push_back(ETriplet(0, 0, mass / 3.0 * 10));
-	A_.push_back(ETriplet(1, 1, mass / 3.0 * 2));
-	A_.push_back(ETriplet(2, 2, mass / 3.0 * 10));
-
-	for (int t = 0; t < 3; t++) {
-		
-		A_.push_back(ETriplet(t + 3, t + 3, mass));
-	}
-
-	A.resize(6, 6);
-	A.setFromTriplets(A_.begin(), A_.end());
-
-	// set the rotation matrix of the local fram
-	this->R = I; // no rotation
-	double thetaz = 30.0;
-	double thetax = 40.0;
-	double thetay = 20.0;
-	Matrix3d Rz;
-
-	Rz << cos(thetaz), -sin(thetaz), 0,
-		sin(thetaz), cos(thetaz), 0,
-		0, 0, 1;
-	Matrix3d Rx;
-	Rx << 1, 0, 0,
-		0, cos(thetax), -sin(thetax),
-		0, sin(thetax), cos(thetax);
-	R = Rx*Rz;
-	this->p << 1.0, 1.0, 1.0;
-	computeE();
-
-	//w, v
-	this->Omega.setZero();
-	this->Omega << 0.0, 0.0, 10.0;
-	this->V.setZero();
-	this->V << 0.0, 0.0, 0.0;
-	this->Phi.segment<3>(0) = Omega;
-	this->Phi.segment<3>(3) = V;
-
-	computePhiT();
 
 }
 
