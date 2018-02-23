@@ -22,10 +22,9 @@ struct RBState
 	std::vector <std::shared_ptr<Particle>>nodes;
 	// constants
 	double mass;
-	Eigen::MatrixXd M; // fixed
+	Eigen::MatrixXd M; 
 
 	// states
-	
 	Eigen::VectorXd Phi;	// 6x1 angular and linear velocity repackeaged into 6-vector
 	Eigen::MatrixXd PHI;	// 6x6
 	Eigen::MatrixXd PhiT;	// 6x6 spatial cross product matrix cosisting of [omega_i]
@@ -44,75 +43,15 @@ struct RBState
 	// computed
 	Eigen::VectorXd B; // 6x1 forces
 
-	// get functions
-	double getMass()
-	{
-		return mass;
-	}
-	Eigen::Vector3d getLinearVelocity() {
-		return V;
-	}
-	Eigen::Vector3d getAngularVelocity() {
-		return Omega;
-	}
-	Eigen::Matrix3d getRotational() {
-		return R;
-	}
-	Eigen::Vector3d getLocalFrameOrigin() {
-		return p;
-	}
-
-
 	// set functions
-	void setMass(double _mass) {
-		mass = _mass;
-	}
-	void setLinearVelocity(Eigen::Vector3d _V) {
-		this->V = _V;
-		Phi.segment<3>(3) = V;
-		EE.block<3,1>(0, 3) = V;
-	}
-	void setAngularVelocity(Eigen::Vector3d _Omega) {
-		this->Omega = _Omega;
-		Phi.segment<3>(0) = Omega;
-		OMEGA = vec2crossmatrix(Omega);
-		EE.block<3,3>(0, 0) = OMEGA;
-		PHI.block(0, 0, 3, 3) = OMEGA;
-		PHI.block(3, 3, 3, 3) = OMEGA;
-		PhiT = PHI.transpose();
-
-	}
-	void setSpatialInertiaMatrix() {
-		M.resize(6, 6);
-		this->M << mass / 3.0 * 10, 0, 0, 0, 0, 0,
-					0, mass / 3.0 * 2.0, 0, 0, 0, 0,
-					0, 0, mass / 3.0 * 10.0, 0, 0, 0,
-					0, 0, 0, mass, 0, 0,
-					0, 0, 0, 0, mass, 0,
-					0, 0, 0, 0, 0, mass;
-
-	}
-	void setTransformationMatrix(Eigen::MatrixXd _E) {
-		this->E = _E;
-		R = E.block(0, 0, 3, 3);
-		p = E.block(0, 3, 3, 1);
-		setBodyForce();
-	}
-	void setRotational(Eigen::Matrix3d _R) {
-		this->R = _R;
-		this->E.block<3, 3>(0, 0) = R; // update E
-		setBodyForce();
-	}
-	void setLocalFrameOrigin(Eigen::Vector3d _p) {
-		this->p = _p;
-		E.block<3, 1>(0, 3) = p;
-	}
-	void setBodyForce() {
-		// if only gravity is involved
-		Eigen::Vector3d g;
-		g << 0.0, -9.8, 0.0;
-		B.segment<3>(3) = R.transpose() * mass * g;
-	}
+	void setMass(double _mass);
+	void setLinearVelocity(Eigen::Vector3d _V);
+	void setAngularVelocity(Eigen::Vector3d _Omega);
+	void setSpatialInertiaMatrix();
+	void setTransformationMatrix(Eigen::MatrixXd _E);
+	void setRotational(Eigen::Matrix3d _R);
+	void setLocalFrameOrigin(Eigen::Vector3d _p);
+	void setBodyForce();
 
 	Eigen::VectorXd computeForces(double h);
 
@@ -121,7 +60,7 @@ struct RBState
 	void updateTransformationMatrix(double h);
 
 	Eigen::Vector3d local2world(Eigen::MatrixXd E, Eigen::Vector3d x);	// compute the world position given a local position x on a rigid body
-	Eigen::Matrix3d vec2crossmatrix(Eigen::Vector3d a);		// repackage a vector into a cross-product matrix
+	Eigen::Matrix3d vec2crossmatrix(Eigen::Vector3d a);					// repackage a vector into a cross-product matrix
 
 	RBState() {
 		E.resize(4, 4);
@@ -166,6 +105,9 @@ public:
 	std::shared_ptr<QuadProg> program;
 	std::vector<ETriplet> A_;
 	Eigen::SparseMatrix<double> A;
+	std::vector<ETriplet> G_;
+	Eigen::SparseMatrix<double> GG;
+
 	
 	Eigen::VectorXd xl;
 	Eigen::VectorXd xu;
@@ -174,6 +116,7 @@ public:
 	Eigen::Vector3d g; // gravity
 	Eigen::VectorXd RHS;
 	Eigen::VectorXd sol;
+	Eigen::VectorXd equalvec;
 	
 	int numRB;
 	Eigen::MatrixXd Eij;
