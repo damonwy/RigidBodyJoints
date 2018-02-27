@@ -9,6 +9,8 @@
 #include "MatrixStack.h"
 #include "Program.h"
 #include "GLSL.h"
+#include "RBState.h"
+#include "Joint.h"
 #include <unsupported/Eigen/src/MatrixFunctions/MatrixExponential.h>
 
 using namespace std;
@@ -16,105 +18,14 @@ using namespace Eigen;
 
 typedef Eigen::Triplet<double> ETriplet;
 double inf = numeric_limits<double>::infinity();
-
-void RBState::setTransformationMatrix(MatrixXd _E) {
-	this->E = _E;
-	R = E.block(0, 0, 3, 3);
-	p = E.block(0, 3, 3, 1);
-	setBodyForce();
-}
-
-void RBState::setRotational(Matrix3d _R) {
-	this->R = _R;
-	this->E.block<3, 3>(0, 0) = R; // update E
-	setBodyForce();
-}
-
-void RBState::setSpatialInertiaMatrix() {
-	M.resize(6, 6);
-	this->M << mass / 3.0 * 10, 0, 0, 0, 0, 0,
-		0, mass / 3.0 * 2.0, 0, 0, 0, 0,
-		0, 0, mass / 3.0 * 10.0, 0, 0, 0,
-		0, 0, 0, mass, 0, 0,
-		0, 0, 0, 0, mass, 0,
-		0, 0, 0, 0, 0, mass;
-}
-
-void RBState::setLocalFrameOrigin(Vector3d _p) {
-	this->p = _p;
-	E.block<3, 1>(0, 3) = p;
-}
-
-void RBState::setMass(double _mass) {
-	mass = _mass;
-}
-
-void RBState::setLinearVelocity(Vector3d _V) {
-	this->V = _V;
-	Phi.segment<3>(3) = V;
-	EE.block<3, 1>(0, 3) = V;
-}
-
-void RBState::setAngularVelocity(Eigen::Vector3d _Omega) {
-	this->Omega = _Omega;
-	Phi.segment<3>(0) = Omega;
-	OMEGA = vec2crossmatrix(Omega);
-	EE.block<3, 3>(0, 0) = OMEGA;
-	PHI.block(0, 0, 3, 3) = OMEGA;
-	PHI.block(3, 3, 3, 3) = OMEGA;
-	PhiT = PHI.transpose();
-}
-
-void RBState::setBodyForce() {
-	// if only gravity is involved
-	Eigen::Vector3d g;
-	g << 0.0, -9.8, 0.0;
-	B.segment<3>(3) = R.transpose() * mass * g;
-}
-
-VectorXd RBState::computeForces(double h) {
-	return (M * Phi + h * (PhiT * M * Phi + B));
-	
-}
-
-Matrix3d RBState::vec2crossmatrix(Vector3d a) {		// repackage a vector into a cross-product matrix
-	Matrix3d A;
-	A << 0, -a(2), a(1),
-		a(2), 0, -a(0),
-		-a(1), a(0), 0;
-	return A;
-}
-
-Vector3d RBState::local2world(MatrixXd E, Vector3d x) {
-	// homo coor
-	VectorXd xh;
-	xh.resize(4);
-	xh.segment<3>(0) = x;
-	xh(3) = 1.0;
-
-	Vector3d xw = (E * xh).segment<3>(0);
-	return xw;
-}	
-
-void RBState::updatePosition() {
-	for (int i = 0; i < nodes.size(); i++) {
-		nodes[i]->xo = nodes[i]->x;
-		nodes[i]->x = local2world(E, nodes[i]->x0);
-	}
-}
-
-void RBState::updateTransformationMatrix(double h) {
-	E = E * (h * EE).exp();
-	R = E.block(0, 0, 3, 3);
-	p = E.block(0, 3, 3, 1);
-	setBodyForce();
-}
-
-
 RigidBody::RigidBody() {
 	this->numRB = 2;
 	this->numJoints = 1;
 	this->numVars = numRB * 6;
+	this->numFixed = 1;
+	this->numEqualities = 0;
+	this->numInequalities = 0;
+
 	ynormal << 0.0, 1.0, 0.0;
 	g << 0.0, -9.8, 0.0;
 	I.setIdentity();
@@ -155,7 +66,11 @@ RigidBody::RigidBody() {
 	init_R.block<3, 3>(3, 0) << 0, -1, 0,
 								1, 0, 0,
 								0, 0, 1;
+	
+	init_fixed_rb.resize(numFixed);
+	init_fixed_rb << 0;
 
+	// Initialize Rigid Bodies
 	for (int i = 0; i < numRB; i++) {
 		bodies[i]->setMass(mass);
 		bodies[i]->setLinearVelocity(init_v.segment<3>(3 * i));
@@ -175,13 +90,24 @@ RigidBody::RigidBody() {
 	}
 
 	// Initialize Joints
-	Eij.resize(4, 4);
-	Eij.setZero();
+	for (int i = 0; i < numJoints; i++) {
+		auto jt = make_shared<Joint>();
+		joints.push_back(jt);
+		jt->type = BALL_JOINT;
+		jt->i = i;
+		jt->k = i + 1;
+		jt->index = i;
+		jt->Eij.block<3, 3>(0, 0) = I;
+		jt->Eij.block<3, 1>(0, 3) << 0.0, 3.0, 0.0;
+	}
 
-	Eij.block<3, 3>(0, 0).setIdentity();
-	Eij(3, 3) = 1.0;
-	Eij.block<3, 1>(0, 3) << 0.0, 3.0, 0.0;
+	// Compute the number of equality constraints
+	for (int i = 0; i < numJoints; i++) {
+		numEqualities += joints[i]->type;
+	}
+	numEqualities += numFixed * 6;
 
+	// Initialize QP b vector and solution vector
 	RHS.resize(numVars);
 	RHS.setZero();
 	sol.resize(numVars);
@@ -202,7 +128,6 @@ RigidBody::RigidBody() {
 			eleBuf[3 * i + j] = 3 * i + j;
 		}
 	}
-	
 }
 
 MatrixXd RigidBody::computeAdjoint(MatrixXd E) {
@@ -240,43 +165,61 @@ void RigidBody::step(double h) {
 	for (int i = 0; i < numRB; i++) {
 		for (int j = 0; j < 6; j++) {
 			A_.push_back(ETriplet(6 * i + j, 6 * i + j, bodies[i]->M(j, j)));
-			
 		}
 	}
 	A.resize(numVars, numVars);
 	A.setFromTriplets(A_.begin(), A_.end());
 	program->setObjectiveMatrix(A);
 
-
 	// Initialize b vector
 	for (int i = 0; i < numRB; i++) {
 		RHS.segment<6>(6 * i) = bodies[i]->computeForces(h);
 	}
-	RHS.segment<6>(0).setZero();
+	//RHS.segment<6>(0).setZero();
 	program->setObjectiveVector(-RHS);
 
-
-	// Initialize G matrix
-	MatrixXd Ejk = Eij.inverse() * bodies[0]->E.inverse() * bodies[1]->E;
-	MatrixXd G;
-	G.resize(6, 12);
-	G.block<6, 6>(0, 0) = computeAdjoint(Eij.inverse());
-	G.block<6, 6>(0, 6) = computeAdjoint(Ejk);
+	MatrixXd Gi, Gk;
+	Gi.resize(6, 6);
+	Gk.resize(6, 6);
 
 	G_.clear();
-	for (int i = 3; i < 6; i++) {
-		for (int j = 0; j < 12; j++) {
-			G_.push_back(ETriplet(i-3, j, G(i,j))); // Fill in G	
+
+	// Initialize G matrix
+	int currentrow = 0;
+
+	// Push back joints constraints
+	for (int i = 0; i < numJoints; i++) {
+		Gi = joints[i]->computeAdjoint(joints[i]->Eij);
+		joints[i]->computeEjk(bodies);
+		Gk = joints[i]->computeAdjoint(joints[i]->Ejk);
+
+		if (joints[i]->type == BALL_JOINT) {
+			for (int j = 0; j < 3; j++) {
+				for (int k = 0; k < 6; k++) {
+					G_.push_back(ETriplet(currentrow + j, 6*joints[i]->i + k, Gi(j + 3, k)));
+					G_.push_back(ETriplet(currentrow + j, 6*joints[i]->k + k, Gk(j + 3, k)));
+				}
+			}
 		}
+		currentrow += joints[i]->type;
 	}
-	GG.resize(numJoints * 6-3, numVars);
+	
+	// Push back fixed constraints
+	for (int i = 0; i < numFixed; i++) {
+		for (int j = 0; j < 6; j++) {
+				G_.push_back(ETriplet(currentrow + j, 6*init_fixed_rb(i) + j, 1));
+		}
+		currentrow += 6;
+	}
+
+	GG.resize(numEqualities, numVars);
 	GG.setFromTriplets(G_.begin(), G_.end());
 	
-	
 	// Initialize equality vector
-	equalvec.resize(numJoints * 6-3);
+	equalvec.resize(numEqualities);
 	equalvec.setZero();
-	program->setNumberOfEqualities(numJoints * 6-3);
+
+	program->setNumberOfEqualities(numEqualities);
 	program->setEqualityMatrix(GG);
 	program->setEqualityVector(equalvec);
 
