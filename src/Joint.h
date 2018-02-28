@@ -28,28 +28,20 @@ struct Joint {
 	Eigen::MatrixXd Gi;	   // Used to constraint Phi_i
 
 
-	int i; // index of the first rigid body in RigidBody::bodies
-	int k; // index of the second rigid body
-	int index; // index of joint
-	int type; // the type of joint
+	int i;		// index of the first rigid body in RigidBody::bodies
+	int k;		// index of the second rigid body
+	int index;	// index of joint
+	int type;	// the type of joint
 
-			  // computed
+	// computed
 	Eigen::MatrixXd Ejk;   // k w.r.t j
 	Eigen::MatrixXd Gk;	   // Used to constraint Phi_k
 
-	Joint() {
-		Eij.resize(4, 4);
-		Eij.setZero();
-		Eij(3, 3) = 1;
-		Gi.resize(6, 6);
-		Gi.setZero();
-		Gk.resize(6, 6);
-		Gk.setZero();
-	};
 
-	Eigen::MatrixXd computeAdjoint(Eigen::MatrixXd E);
+	Eigen::MatrixXd computeAdjoint(Eigen::Matrix4d E);
 	Eigen::Matrix3d vec2crossmatrix(Eigen::Vector3d a);
 	void computeEjk(const std::vector< std::shared_ptr<RBState> > bodies);
+	Joint();
 };
 
 #endif

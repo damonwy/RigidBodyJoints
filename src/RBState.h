@@ -36,6 +36,7 @@ struct RBState
 	Eigen::Matrix3d VC;		// 3x3 the crossproduct matrix of V
 
 	Eigen::MatrixXd E;      // 4x4 transformation matrix consisting of rotational and translational components
+	Eigen::MatrixXd Etemp;  // 4x4 transformation matrix (temporary)
 	Eigen::MatrixXd EE;		// 4x4 spatial velocity matrix	
 
 	Eigen::Vector3d p;		// 3x1 position of the local frame's origin in world coordinates
@@ -44,7 +45,7 @@ struct RBState
 							// computed
 	Eigen::VectorXd B; // 6x1 forces
 
-					   // set functions
+	// set functions
 	void setMass(double _mass);
 	void setLinearVelocity(Eigen::Vector3d _V);
 	void setAngularVelocity(Eigen::Vector3d _Omega);
@@ -55,6 +56,7 @@ struct RBState
 	void setBodyForce();
 
 	Eigen::VectorXd computeForces(double h);
+	void computeTempE(double h);
 
 	// update
 	void updatePosition();
@@ -65,9 +67,10 @@ struct RBState
 
 	RBState() {
 		E.resize(4, 4);
+		EE.resize(4, 4);
+		Etemp.resize(4, 4);
 		E.setZero();
 		E(3, 3) = 1.0;
-		EE.resize(4, 4);
 		EE.setZero();
 		B.resize(6);
 		B.setZero();

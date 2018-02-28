@@ -29,30 +29,33 @@ public:
 
 	Eigen::MatrixXd computeAdjoint(Eigen::MatrixXd E);
 	Eigen::Matrix3d vec2crossmatrix(Eigen::Vector3d a);	// repackage a vector into a cross-product matrix
-
+	Eigen::Vector3d local2world(Eigen::MatrixXd E, Eigen::Vector3d x);	// compute the world position given a local position x on a rigid body
 	tetgenio in, out;
-	
+
 	int nVerts;
 	int nTriFaces;
 	int nEdges;
 	Eigen::VectorXi init_fixed_rb;
 
 	double mass;
+	double yfloor;
 	int numFixed;
 	int numCol;
 	int numJoints;
 	int numVars;
 	int numEqualities;
 	int numInequalities;
-	
+
 	Eigen::Vector3d ynormal;
 	std::shared_ptr<QuadProg> program;
 	std::vector<ETriplet> A_;
 	Eigen::SparseMatrix<double> A;
 	std::vector<ETriplet> G_;
 	Eigen::SparseMatrix<double> GG;
+	std::vector<ETriplet> C_;
+	Eigen::SparseMatrix<double> C;
 
-	
+
 	Eigen::VectorXd xl;
 	Eigen::VectorXd xu;
 	Eigen::VectorXd b;
@@ -61,11 +64,14 @@ public:
 	Eigen::VectorXd RHS;
 	Eigen::VectorXd sol;
 	Eigen::VectorXd equalvec;
-	
+	Eigen::VectorXd convec;
+	Eigen::MatrixXd gamma;
+
 	int numRB;
 	Eigen::MatrixXd Eij;
 	std::vector < std::shared_ptr<Joint> > joints;
-	std::vector <std::shared_ptr<RBState> > bodies;
+	std::vector < std::shared_ptr<RBState> > bodies;
+	std::vector < int > colList;
 
 	static const int BALL_JOINT = 3;
 	static const int HINGE_JOINT = 5;

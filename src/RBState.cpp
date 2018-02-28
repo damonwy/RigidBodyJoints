@@ -105,6 +105,10 @@ void RBState::updatePosition() {
 	}
 }
 
+void RBState::computeTempE(double h) {
+	Etemp = E * (h * EE).exp();
+}
+
 void RBState::updateTransformationMatrix(double h) {
 	E = E * (h * EE).exp();
 	R = E.block(0, 0, 3, 3);

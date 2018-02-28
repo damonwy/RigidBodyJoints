@@ -18,6 +18,18 @@ using namespace Eigen;
 
 typedef Eigen::Triplet<double> ETriplet;
 
+
+Joint::Joint() {
+	Eij.resize(4, 4);
+	Ejk.resize(4, 4);
+	Eij.setZero();
+	Eij(3, 3) = 1;
+	Gi.resize(6, 6);
+	Gi.setZero();
+	Gk.resize(6, 6);
+	Gk.setZero();
+};
+
 Matrix3d Joint::vec2crossmatrix(Vector3d a) {
 	Matrix3d A;
 	A << 0, -a(2), a(1),
@@ -30,7 +42,7 @@ void Joint::computeEjk(const vector< shared_ptr<RBState> > bodies) {
 	Ejk = Eij.inverse() * bodies[i]->E.inverse() * bodies[k]->E;
 }
 
-MatrixXd Joint::computeAdjoint(MatrixXd E) {
+MatrixXd Joint::computeAdjoint(Matrix4d E) {
 	Vector3d p = E.block<3, 1>(0, 3);
 	Matrix3d R = E.block<3, 3>(0, 0);
 	MatrixXd Ad;

@@ -18,17 +18,22 @@ using namespace Eigen;
 
 typedef Eigen::Triplet<double> ETriplet;
 double inf = numeric_limits<double>::infinity();
-RigidBody::RigidBody() {
-	this->numRB = 2;
-	this->numJoints = 1;
-	this->numVars = numRB * 6;
-	this->numFixed = 1;
-	this->numEqualities = 0;
-	this->numInequalities = 0;
 
-	ynormal << 0.0, 1.0, 0.0;
+RigidBody::RigidBody() {
+	this->numRB = 3;
+	this->numJoints = 1;
+	this->numFixed = 1;
+	this->yfloor = -5.0;
+	this->ynormal << 0.0, 1.0, 0.0;
+	this->I.setIdentity();
+	gamma.resize(3, 6);
+	gamma.block<3, 3>(0, 3) = I;
+
+	numVars = numRB * 6;
+	numEqualities = 0;
+	numInequalities = 0;
+
 	g << 0.0, -9.8, 0.0;
-	I.setIdentity();
 
 	xl.resize(numVars);
 	xu.resize(numVars);
@@ -57,8 +62,10 @@ RigidBody::RigidBody() {
 
 	init_v.setZero();
 	init_w.setZero();
-	init_w << 0, 0, 0, 0, 0, 0;
-	init_p << 0, 0, 0, 3, 3, 0;
+	//init_w << 0, 0, 0, 0, 0, 0;
+	init_p << 0.0, 0.0, 0.0, 
+			  3.0, 3.0, 0.0,
+			  3.0, 0.0, 0.0;
 
 	MatrixXd init_R, init_E;
 	init_R.resize(3 * numRB, 3);
@@ -66,16 +73,18 @@ RigidBody::RigidBody() {
 	init_R.block<3, 3>(3, 0) << 0, -1, 0,
 								1, 0, 0,
 								0, 0, 1;
-	
+	init_R.block<3, 3>(6, 0) = I;
+
 	init_fixed_rb.resize(numFixed);
 	init_fixed_rb << 0;
+	convec.resize(6);
 
 	// Initialize Rigid Bodies
 	for (int i = 0; i < numRB; i++) {
 		bodies[i]->setMass(mass);
 		bodies[i]->setLinearVelocity(init_v.segment<3>(3 * i));
 		bodies[i]->setAngularVelocity(init_w.segment<3>(3 * i));
-		bodies[i]->setRotational(init_R.block<3,3>(3 * i, 0));
+		bodies[i]->setRotational(init_R.block<3, 3>(3 * i, 0));
 		bodies[i]->setLocalFrameOrigin(init_p.segment<3>(3 * i));
 		bodies[i]->setSpatialInertiaMatrix();
 
@@ -83,8 +92,8 @@ RigidBody::RigidBody() {
 			auto p = make_shared<Particle>();
 			bodies[i]->nodes.push_back(p);
 			p->x0 << out.pointlist[3 * j + 0],
-					 out.pointlist[3 * j + 1],
-					 out.pointlist[3 * j + 2];
+				out.pointlist[3 * j + 1],
+				out.pointlist[3 * j + 2];
 			p->v.setZero();
 		}
 	}
@@ -117,7 +126,7 @@ RigidBody::RigidBody() {
 	norBuf.clear();
 	texBuf.clear();
 	eleBuf.clear();
-	
+
 	posBuf.resize(nTriFaces * 9 * numRB);
 	norBuf.resize(nTriFaces * 9 * numRB);
 	eleBuf.resize(nTriFaces * 3 * numRB);
@@ -175,7 +184,6 @@ void RigidBody::step(double h) {
 	for (int i = 0; i < numRB; i++) {
 		RHS.segment<6>(6 * i) = bodies[i]->computeForces(h);
 	}
-	//RHS.segment<6>(0).setZero();
 	program->setObjectiveVector(-RHS);
 
 	MatrixXd Gi, Gk;
@@ -196,25 +204,25 @@ void RigidBody::step(double h) {
 		if (joints[i]->type == BALL_JOINT) {
 			for (int j = 0; j < 3; j++) {
 				for (int k = 0; k < 6; k++) {
-					G_.push_back(ETriplet(currentrow + j, 6*joints[i]->i + k, Gi(j + 3, k)));
-					G_.push_back(ETriplet(currentrow + j, 6*joints[i]->k + k, Gk(j + 3, k)));
+					G_.push_back(ETriplet(currentrow + j, 6 * joints[i]->i + k, Gi(j + 3, k)));
+					G_.push_back(ETriplet(currentrow + j, 6 * joints[i]->k + k, Gk(j + 3, k)));
 				}
 			}
 		}
 		currentrow += joints[i]->type;
 	}
-	
+
 	// Push back fixed constraints
 	for (int i = 0; i < numFixed; i++) {
 		for (int j = 0; j < 6; j++) {
-				G_.push_back(ETriplet(currentrow + j, 6*init_fixed_rb(i) + j, 1));
+			G_.push_back(ETriplet(currentrow + j, 6 * init_fixed_rb(i) + j, 1));
 		}
 		currentrow += 6;
 	}
 
 	GG.resize(numEqualities, numVars);
 	GG.setFromTriplets(G_.begin(), G_.end());
-	
+
 	// Initialize equality vector
 	equalvec.resize(numEqualities);
 	equalvec.setZero();
@@ -229,8 +237,75 @@ void RigidBody::step(double h) {
 	for (int i = 0; i < numRB; i++) {
 		bodies[i]->setAngularVelocity(sol.segment<3>(6 * i + 0));
 		bodies[i]->setLinearVelocity(sol.segment<3>(6 * i + 3));
-		bodies[i]->updateTransformationMatrix(h);
+		bodies[i]->computeTempE(h);
+		//bodies[i]->updateTransformationMatrix(h);
 	}
+
+	// Update node positions to detect collisions with floor
+	numCol = 0;
+	for (int i = 0; i < numRB; i++) {
+		auto b = bodies[i];
+
+		for (int j = 0; j < b->nodes.size(); j++) {
+			auto n = b->nodes[j];
+			n->xo = n->x;
+			n->x = local2world(b->Etemp, n->x0);
+			if (n->x(1) < yfloor) {
+				colList.push_back(i);
+				colList.push_back(j);
+				numCol += 1;
+			}
+		}
+	}
+
+	numInequalities += numCol;
+	// Add Inequalities constraints
+	if (numCol == 0) {
+		for (int i = 0; i < numRB; i++) {
+			bodies[i]->updateTransformationMatrix(h);
+		}
+	}
+	else {
+		VectorXd inequalvec;
+
+		// Initialize inequality vector
+		inequalvec.resize(numInequalities);
+		inequalvec.setZero();
+		C.resize(numInequalities, numVars);
+		program->setNumberOfInequalities(numInequalities);
+
+		for (int i = 0; i < numCol; i++) {
+
+			int ib = colList[2 * i + 0]; // the index of rigid body 
+			int in = colList[2 * i + 1]; // the index of node 
+
+			gamma.block(0, 0, 3, 3) = vec2crossmatrix(bodies[ib]->nodes[in]->x0).transpose();
+
+			convec = ynormal.transpose() * bodies[ib]->R * gamma; // 1x6 vector that should be in the constraint matrix
+
+			for (int t = 0; t < 6; t++) {
+				C_.push_back(ETriplet(i, 6 * ib + t, -convec(t)));
+			}
+		}
+
+		C.setFromTriplets(C_.begin(), C_.end());
+
+		program->setInequalityMatrix(C);
+		program->setInequalityVector(inequalvec);
+		
+		bool success = program->solve();
+		sol = program->getPrimalSolution();
+
+		for (int i = 0; i < numRB; i++) {
+			bodies[i]->setAngularVelocity(sol.segment<3>(6 * i + 0));
+			bodies[i]->setLinearVelocity(sol.segment<3>(6 * i + 3));
+			bodies[i]->updateTransformationMatrix(h);
+		}
+
+		C_.clear();
+		colList.clear();
+	}
+
 
 	updatePosNor();
 }
@@ -311,7 +386,7 @@ void RigidBody::updatePosNor() {
 				norBuf[nTriFaces * 9 * i + 9 * iface + 6 + idx] = normal(idx);
 			}
 		}
-	}	
+	}
 }
 
 Matrix3d RigidBody::vec2crossmatrix(Vector3d a) {
@@ -320,4 +395,15 @@ Matrix3d RigidBody::vec2crossmatrix(Vector3d a) {
 		a(2), 0, -a(0),
 		-a(1), a(0), 0;
 	return A;
+}
+
+Vector3d RigidBody::local2world(MatrixXd E, Vector3d x) {
+	// homo coor
+	VectorXd xh;
+	xh.resize(4);
+	xh.segment<3>(0) = x;
+	xh(3) = 1.0;
+
+	Vector3d xw = (E * xh).segment<3>(0);
+	return xw;
 }
