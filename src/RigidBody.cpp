@@ -20,10 +20,10 @@ typedef Eigen::Triplet<double> ETriplet;
 double inf = numeric_limits<double>::infinity();
 
 RigidBody::RigidBody() {
-	this->numRB = 3;
-	this->numJoints = 1;
+	this->numRB = 5;
+	this->numJoints = 4;
 	this->numFixed = 1;
-	this->yfloor = -5.0;
+	this->yfloor = 0.0;
 	this->ynormal << 0.0, 1.0, 0.0;
 	this->I.setIdentity();
 	gamma.resize(3, 6);
@@ -61,26 +61,41 @@ RigidBody::RigidBody() {
 	init_p.resize(3 * numRB);
 
 	init_v.setZero();
+	init_v.segment<3>(3 * 1) << 14.0, 0.0, 0.0;
+	
 	init_w.setZero();
 	//init_w << 0, 0, 0, 0, 0, 0;
-	init_p << 0.0, 0.0, 0.0, 
-			  3.0, 3.0, 0.0,
-			  3.0, 0.0, 0.0;
+	init_p << 0.0, 16.0, 0.0,
+		0.0, 12.5, 0.0,
+		0.0, 9.5, 0.0,
+		1.0, 7.5, 0.0,
+		4.0, 7.5, 0.0;
+			
 
 	MatrixXd init_R, init_E;
 	init_R.resize(3 * numRB, 3);
 	init_R.block<3, 3>(0, 0) = I;
-	init_R.block<3, 3>(3, 0) << 0, -1, 0,
-								1, 0, 0,
-								0, 0, 1;
-	init_R.block<3, 3>(6, 0) = I;
+	for (int i = 0; i < numRB; i++) {
+		init_R.block<3, 3>(i * 3, 0) = I;
+	}
+	
+	init_R.block<3, 3>(9, 0) << 0, -1, 0,
+		1, 0, 0,
+		0, 0, 1;
+	init_R.block<3, 3>(12, 0) << 0, -1, 0,
+		1, 0, 0,
+		0, 0, 1;
 
 	init_fixed_rb.resize(numFixed);
 	init_fixed_rb << 0;
 	convec.resize(6);
+	Vector3d dimensions;
+	dimensions << 2 * abs(out.pointlist[0]), 2 * abs(out.pointlist[1]), 2 * abs(out.pointlist[2]);
 
 	// Initialize Rigid Bodies
 	for (int i = 0; i < numRB; i++) {
+		
+		bodies[i]->setDimensions(dimensions);
 		bodies[i]->setMass(mass);
 		bodies[i]->setLinearVelocity(init_v.segment<3>(3 * i));
 		bodies[i]->setAngularVelocity(init_w.segment<3>(3 * i));
@@ -102,13 +117,22 @@ RigidBody::RigidBody() {
 	for (int i = 0; i < numJoints; i++) {
 		auto jt = make_shared<Joint>();
 		joints.push_back(jt);
-		jt->type = BALL_JOINT;
+		jt->type = HINGE_JOINT_Z;
 		jt->i = i;
 		jt->k = i + 1;
 		jt->index = i;
 		jt->Eij.block<3, 3>(0, 0) = I;
-		jt->Eij.block<3, 1>(0, 3) << 0.0, 3.0, 0.0;
+		jt->Eij.block<3, 1>(0, 3) << 0.0, -2.0, 0.0;
 	}
+	/*joints[1]->type = BALL_JOINT;
+	joints[1]->i = 0;
+	joints[1]->k = 2;
+	joints[1]->Eij.block<3, 1>(0, 3) << 0.0, 2.0, 0.0;
+
+	joints[2]->type = BALL_JOINT;
+	joints[2]->i = 1;
+	joints[2]->k = 3;
+	joints[2]->Eij.block<3, 1>(0, 3) << 0.0, -1.5, 0.0;*/
 
 	// Compute the number of equality constraints
 	for (int i = 0; i < numJoints; i++) {
@@ -197,9 +221,9 @@ void RigidBody::step(double h) {
 
 	// Push back joints constraints
 	for (int i = 0; i < numJoints; i++) {
-		Gi = joints[i]->computeAdjoint(joints[i]->Eij);
+		Gi = joints[i]->computeAdjoint(joints[i]->Eij.inverse());
 		joints[i]->computeEjk(bodies);
-		Gk = joints[i]->computeAdjoint(joints[i]->Ejk);
+		Gk = -joints[i]->computeAdjoint(joints[i]->Ejk); // careful about the sign!
 
 		if (joints[i]->type == BALL_JOINT) {
 			for (int j = 0; j < 3; j++) {
@@ -209,6 +233,19 @@ void RigidBody::step(double h) {
 				}
 			}
 		}
+
+		if (joints[i]->type == HINGE_JOINT_Z) {
+			for (int j = 0; j < 6; j++) {
+				for (int k = 0; k < 6; k++) {
+					if (j != 2) {
+						G_.push_back(ETriplet(currentrow + j, 6 * joints[i]->i + k, Gi(j, k)));
+						G_.push_back(ETriplet(currentrow + j, 6 * joints[i]->k + k, Gk(j, k)));
+					}	
+				}
+			}
+		}
+
+
 		currentrow += joints[i]->type;
 	}
 

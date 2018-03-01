@@ -44,9 +44,11 @@ struct RBState
 
 							// computed
 	Eigen::VectorXd B; // 6x1 forces
+	Eigen::Vector3d dimensions;  // width, height, length
 
 	// set functions
 	void setMass(double _mass);
+	void setDimensions(Eigen::Vector3d _dimensions);
 	void setLinearVelocity(Eigen::Vector3d _V);
 	void setAngularVelocity(Eigen::Vector3d _Omega);
 	void setSpatialInertiaMatrix();

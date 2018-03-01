@@ -74,8 +74,9 @@ public:
 	std::vector < int > colList;
 
 	static const int BALL_JOINT = 3;
-	static const int HINGE_JOINT = 5;
-
+	static const int HINGE_JOINT_X = 5;
+	static const int HINGE_JOINT_Y = 5;
+	static const int HINGE_JOINT_Z = 5;
 private:
 	std::vector<unsigned int> eleBuf;
 	std::vector<float> posBuf;

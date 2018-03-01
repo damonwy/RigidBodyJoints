@@ -17,6 +17,9 @@ using namespace Eigen;
 
 typedef Eigen::Triplet<double> ETriplet;
 
+void RBState::setDimensions(Eigen::Vector3d _dimensions) {
+	this->dimensions = _dimensions;
+}
 
 void RBState::setTransformationMatrix(MatrixXd _E) {
 	this->E = _E;
@@ -33,9 +36,9 @@ void RBState::setRotational(Matrix3d _R) {
 
 void RBState::setSpatialInertiaMatrix() {
 	M.resize(6, 6);
-	this->M << mass / 3.0 * 10, 0, 0, 0, 0, 0,
-		0, mass / 3.0 * 2.0, 0, 0, 0, 0,
-		0, 0, mass / 3.0 * 10.0, 0, 0, 0,
+	this->M << mass / 12.0 * (dimensions(1)*dimensions(1) + dimensions(2)+dimensions(2)), 0, 0, 0, 0, 0,
+			  0, mass / 12.0 * (dimensions(0)*dimensions(0) + dimensions(2) + dimensions(2)), 0, 0, 0, 0,
+			  0, 0, mass / 12.0 * (dimensions(1)*dimensions(1) + dimensions(0) + dimensions(0)), 0, 0, 0,
 		0, 0, 0, mass, 0, 0,
 		0, 0, 0, 0, mass, 0,
 		0, 0, 0, 0, 0, mass;
