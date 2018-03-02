@@ -11,6 +11,7 @@
 #include "GLSL.h"
 #include "RBState.h"
 #include "Joint.h"
+#include "odeBoxBox.h"
 #include <unsupported/Eigen/src/MatrixFunctions/MatrixExponential.h>
 
 using namespace std;
@@ -20,15 +21,16 @@ typedef Eigen::Triplet<double> ETriplet;
 double inf = numeric_limits<double>::infinity();
 
 RigidBody::RigidBody() {
-	this->numRB = 5;
+	this->numRB = 6;
 	this->numJoints = 4;
-	this->numFixed = 1;
+	this->numFixed = 2;
 	this->yfloor = 0.0;
 	this->ynormal << 0.0, 1.0, 0.0;
 	this->I.setIdentity();
 	gamma.resize(3, 6);
 	gamma.block<3, 3>(0, 3) = I;
-
+	gamma_k.resize(3, 6);
+	gamma_k.block<3, 3>(0, 3) = I;
 	numVars = numRB * 6;
 	numEqualities = 0;
 	numInequalities = 0;
@@ -69,7 +71,8 @@ RigidBody::RigidBody() {
 		0.0, 12.5, 0.0,
 		0.0, 9.5, 0.0,
 		1.0, 7.5, 0.0,
-		4.0, 7.5, 0.0;
+		4.0, 7.5, 0.0,
+		0.0, 1.0, 0.0;
 			
 
 	MatrixXd init_R, init_E;
@@ -85,12 +88,18 @@ RigidBody::RigidBody() {
 	init_R.block<3, 3>(12, 0) << 0, -1, 0,
 		1, 0, 0,
 		0, 0, 1;
+	init_R.block<3, 3>(15, 0) << 0, -1, 0,
+		1, 0, 0,
+		0, 0, 1;
+
 
 	init_fixed_rb.resize(numFixed);
-	init_fixed_rb << 0;
+	init_fixed_rb << 0, 5;
 	convec.resize(6);
+	conveck.resize(6);
 	Vector3d dimensions;
 	dimensions << 2 * abs(out.pointlist[0]), 2 * abs(out.pointlist[1]), 2 * abs(out.pointlist[2]);
+
 
 	// Initialize Rigid Bodies
 	for (int i = 0; i < numRB; i++) {
@@ -110,6 +119,7 @@ RigidBody::RigidBody() {
 				out.pointlist[3 * j + 1],
 				out.pointlist[3 * j + 2];
 			p->v.setZero();
+
 		}
 	}
 
@@ -154,13 +164,14 @@ RigidBody::RigidBody() {
 	posBuf.resize(nTriFaces * 9 * numRB);
 	norBuf.resize(nTriFaces * 9 * numRB);
 	eleBuf.resize(nTriFaces * 3 * numRB);
-
+	
 	updatePosNor();
 	for (int i = 0; i < numRB * nTriFaces; i++) {
 		for (int j = 0; j < 3; j++) {
 			eleBuf[3 * i + j] = 3 * i + j;
 		}
 	}
+	
 }
 
 MatrixXd RigidBody::computeAdjoint(MatrixXd E) {
@@ -279,7 +290,7 @@ void RigidBody::step(double h) {
 	}
 
 	// Update node positions to detect collisions with floor
-	numCol = 0;
+	numColFloor = 0;
 	for (int i = 0; i < numRB; i++) {
 		auto b = bodies[i];
 
@@ -290,14 +301,33 @@ void RigidBody::step(double h) {
 			if (n->x(1) < yfloor) {
 				colList.push_back(i);
 				colList.push_back(j);
-				numCol += 1;
+				numColFloor += 1;
+			}
+		}
+	}
+	numInequalities += numColFloor;
+	numColBoxBox = 0;
+	contacts.clear();
+	// Detect collisions between rigid bodies
+	for (int i = 0; i < numRB; i++) {
+
+		if (i != 5) { //TODO: modify to the index of all the rigid bodies
+			auto b = bodies[i];
+			auto cts = make_shared<Contacts>(odeBoxBox(b->E, b->dimensions, bodies[5]->E, bodies[5]->dimensions));  // TODO : modify to the index of all the rigid bodies
+			if (cts->count > 0) {
+				cts->i = i;
+				cts->k = 5; //TODO
+				contacts.push_back(cts);
+				numColBoxBox += cts->count;
+				cout << numColBoxBox << endl;
 			}
 		}
 	}
 
-	numInequalities += numCol;
+	numInequalities += numColBoxBox;
+	cout << numInequalities << endl;
 	// Add Inequalities constraints
-	if (numCol == 0) {
+	if (numInequalities == 0) {
 		for (int i = 0; i < numRB; i++) {
 			bodies[i]->updateTransformationMatrix(h);
 		}
@@ -311,7 +341,10 @@ void RigidBody::step(double h) {
 		C.resize(numInequalities, numVars);
 		program->setNumberOfInequalities(numInequalities);
 
-		for (int i = 0; i < numCol; i++) {
+
+		int currentrow = 0;
+		// Push back constraints with floor
+		for (int i = 0; i < numColFloor; i++) {
 
 			int ib = colList[2 * i + 0]; // the index of rigid body 
 			int in = colList[2 * i + 1]; // the index of node 
@@ -322,6 +355,39 @@ void RigidBody::step(double h) {
 
 			for (int t = 0; t < 6; t++) {
 				C_.push_back(ETriplet(i, 6 * ib + t, -convec(t)));
+
+			}
+		}
+
+		currentrow += numColFloor;
+		cout << numColFloor << endl;
+		cout << numInequalities << endl;
+
+		// Push back constraints with rigid bodies
+		for (int i = 0; i < contacts.size(); i++) {
+			auto cts = contacts[i];
+			
+			for (int j = 0; j < cts->count; j++) {
+				// Change the world position to local position
+				Vector3d x0 = cts->positions[j];			// collision point in rb i in world frame
+				Vector3d xi = local2world(bodies[cts->i]->Etemp.inverse(), x0);
+				Vector3d xk = local2world(bodies[cts->k]->Etemp.inverse(), x0);
+
+				gamma.block(0, 0, 3, 3) = vec2crossmatrix(xi).transpose();
+				convec = cts->normal.transpose() * bodies[cts->i]->R * gamma;
+
+				gamma_k.block<3, 3>(0, 0) = vec2crossmatrix(xk).transpose();
+				conveck = cts->normal.transpose() * bodies[cts->k]->R * gamma_k;
+			
+				for (int t = 0; t < 6; t++) {
+					C_.push_back(ETriplet(currentrow, 6 * cts->i + t, convec(t)));
+					C_.push_back(ETriplet(currentrow, 6 * cts->k + t, -conveck(t)));
+					cout << 6 * cts->i + t << endl;
+					cout << 6 * cts->k + t << endl;
+				}
+				cout << currentrow << endl;
+				currentrow += 1;
+				
 			}
 		}
 
@@ -366,7 +432,7 @@ void RigidBody::init() {
 	assert(glGetError() == GL_NO_ERROR);
 }
 
-void RigidBody::draw(shared_ptr<MatrixStack> MV, const shared_ptr<Program> p)const {
+void RigidBody::draw(shared_ptr<MatrixStack> MV, const shared_ptr<Program> p, const shared_ptr<Program> p2, shared_ptr<MatrixStack> P)const {
 
 	glUniform3fv(p->getUniform("kdFront"), 1, Vector3f(1.0, 0.0, 0.0).data());
 	glUniform3fv(p->getUniform("kdBack"), 1, Vector3f(1.0, 1.0, 0.0).data());
@@ -385,15 +451,85 @@ void RigidBody::draw(shared_ptr<MatrixStack> MV, const shared_ptr<Program> p)con
 	glBufferData(GL_ARRAY_BUFFER, norBuf.size() * sizeof(float), &norBuf[0], GL_DYNAMIC_DRAW);
 	glVertexAttribPointer(h_nor, 3, GL_FLOAT, GL_FALSE, 0, (const void *)0);
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, eleBufID);
-
-	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, eleBufID);
-	glDrawElements(GL_TRIANGLES, 3 * nTriFaces * numRB, GL_UNSIGNED_INT, (const void *)(0 * sizeof(unsigned int)));
-
+	
+	for (int i = 0; i < numRB; i++) {
+		glUniform3fv(p->getUniform("kdBack"), 1, Vector3f((150 + 20 * i) / 255.0, (100 + 10*i) / 255.0, (150.0 + 10 * i) / 255.0).data());
+		glDrawElements(GL_TRIANGLES, 3 * nTriFaces, GL_UNSIGNED_INT, (const void *)(3 * nTriFaces * i * sizeof(unsigned int)));
+	}
+	
 	glDisableVertexAttribArray(h_nor);
 	glDisableVertexAttribArray(h_pos);
 	glBindBuffer(GL_ARRAY_BUFFER, 0);
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 	MV->popMatrix();
+
+	p->unbind();
+
+	p2->bind();
+	glUniformMatrix4fv(p2->getUniform("P"), 1, GL_FALSE, glm::value_ptr(P->topMatrix()));
+	glUniformMatrix4fv(p2->getUniform("MV"), 1, GL_FALSE, glm::value_ptr(MV->topMatrix()));
+	MV->pushMatrix();
+	glUniformMatrix4fv(p->getUniform("MV"), 1, GL_FALSE, glm::value_ptr(MV->topMatrix()));
+	glPointSize(5);
+
+	glBegin(GL_POINTS);
+	for (int i = 0; i < nVerts; i++) {
+		switch (i) {
+		case 0:
+			glColor3f(1.0, 0.0, 0.0); // red
+			break;
+		case 1:
+			glColor3f(1.0, 1.0, 0.0); // yellow
+			break;
+		case 2:
+			glColor3f(0.0, 0.0, 1.0);  // blue
+			break;
+		case 3:
+			glColor3f(0.0, 1.0, 0.0); // lime
+			break;
+		case 4:
+			glColor3f(128.0/ 255.0, 0.0, 0.0);// maroon
+			break;
+		case 5:
+			glColor3f(128.0 / 255.0, (128.0) / 255.0, 0.0);// olive
+			break;
+		case 6:
+			glColor3f(0.0, 0.0, 128.0 / 255.0); // navy
+			break;
+		case 7:
+			glColor3f(0.0, 128.0 / 255.0 ,0.0); // green
+			break;
+		}
+		for (int j = 0; j < numRB; j++) {
+			glVertex3f(float(bodies[j]->nodes[i]->x(0)), float(bodies[j]->nodes[i]->x(1)), float(bodies[j]->nodes[i]->x(2)));
+		}
+	}
+	glEnd();
+
+	glColor3f(1.0, 1.0, 0.0); // yellow
+	if (numColBoxBox != 0) {
+		glLineWidth(4);
+		for (int i = 0; i < contacts.size(); i++) {
+			for (int j = 0; j < contacts[i]->count; j++){
+				Vector3d p1 = contacts[i]->positions[j];
+				Vector3d p2 = 1.5 * contacts[i]->normal + contacts[i]->positions[j];
+				glBegin(GL_LINES);
+				glVertex3f(float(p1(0)), float(p1(1)), float(p1(2)));
+				glVertex3f(float(p2(0)), float(p2(1)), float(p2(2)));
+				glEnd();
+				glPointSize(10);
+				glBegin(GL_POINTS);
+				glVertex3f(float(p1(0)), float(p1(1)), float(p1(2)));
+				glEnd();
+
+			}
+		}
+
+	}
+	
+
+	MV->popMatrix();
+	p2->unbind();
 }
 
 void RigidBody::updatePosNor() {
@@ -435,6 +571,17 @@ Matrix3d RigidBody::vec2crossmatrix(Vector3d a) {
 }
 
 Vector3d RigidBody::local2world(MatrixXd E, Vector3d x) {
+	// homo coor
+	VectorXd xh;
+	xh.resize(4);
+	xh.segment<3>(0) = x;
+	xh(3) = 1.0;
+
+	Vector3d xw = (E * xh).segment<3>(0);
+	return xw;
+}
+
+Vector3d RigidBody::world2local(MatrixXd E, Vector3d x) {
 	// homo coor
 	VectorXd xh;
 	xh.resize(4);

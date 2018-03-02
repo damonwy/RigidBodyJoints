@@ -6,6 +6,8 @@
 
 struct Contacts
 {
+	int i; // 
+	int k;
 	// Number of contacts
 	int count;
 	// Maximum penetration depth

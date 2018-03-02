@@ -30,7 +30,7 @@ public:
 	void reset();
 	void step();
 	
-	void draw(std::shared_ptr<MatrixStack> MV, const std::shared_ptr<Program> prog) const;
+	void draw(std::shared_ptr<MatrixStack> MV, const std::shared_ptr<Program> prog, const std::shared_ptr<Program> prog2, std::shared_ptr<MatrixStack> P) const;
 	
 	double getTime() const { return t; }
 	

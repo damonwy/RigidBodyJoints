@@ -64,9 +64,9 @@ void Scene::step()
 	rigidbody->step(h);
 }
 
-void Scene::draw(shared_ptr<MatrixStack> MV, const shared_ptr<Program> prog) const
+void Scene::draw(shared_ptr<MatrixStack> MV, const shared_ptr<Program> prog, const shared_ptr<Program> prog2, shared_ptr<MatrixStack> P) const
 {
 	glUniform3fv(prog->getUniform("kdFront"), 1, Vector3f(1.0, 1.0, 1.0).data());
 	
-	rigidbody->draw(MV, prog);
+	rigidbody->draw(MV, prog, prog2, P);
 }

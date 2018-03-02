@@ -16,6 +16,7 @@ class Program;
 class Particle;
 struct RBState;
 struct Joint;
+struct Contacts;
 
 typedef Eigen::Triplet<double> ETriplet;
 
@@ -24,12 +25,13 @@ public:
 	RigidBody();
 	void init();
 	void updatePosNor();
-	void draw(std::shared_ptr<MatrixStack> MV, const std::shared_ptr<Program> p)const;
+	void draw(std::shared_ptr<MatrixStack> MV, const std::shared_ptr<Program> p, const std::shared_ptr<Program> p2, std::shared_ptr<MatrixStack> P)const;
 	void step(double h);
 
 	Eigen::MatrixXd computeAdjoint(Eigen::MatrixXd E);
 	Eigen::Matrix3d vec2crossmatrix(Eigen::Vector3d a);	// repackage a vector into a cross-product matrix
 	Eigen::Vector3d local2world(Eigen::MatrixXd E, Eigen::Vector3d x);	// compute the world position given a local position x on a rigid body
+	Eigen::Vector3d world2local(Eigen::MatrixXd E, Eigen::Vector3d x);
 	tetgenio in, out;
 
 	int nVerts;
@@ -40,7 +42,8 @@ public:
 	double mass;
 	double yfloor;
 	int numFixed;
-	int numCol;
+	int numColFloor;
+	int numColBoxBox;
 	int numJoints;
 	int numVars;
 	int numEqualities;
@@ -65,12 +68,16 @@ public:
 	Eigen::VectorXd sol;
 	Eigen::VectorXd equalvec;
 	Eigen::VectorXd convec;
+	Eigen::VectorXd conveck;
 	Eigen::MatrixXd gamma;
+	Eigen::MatrixXd gamma_k;
 
 	int numRB;
 	Eigen::MatrixXd Eij;
 	std::vector < std::shared_ptr<Joint> > joints;
 	std::vector < std::shared_ptr<RBState> > bodies;
+	std::vector < std::shared_ptr<Contacts> > contacts;
+
 	std::vector < int > colList;
 
 	static const int BALL_JOINT = 3;
@@ -82,6 +89,7 @@ private:
 	std::vector<float> posBuf;
 	std::vector<float> norBuf;
 	std::vector<float> texBuf;
+	
 	unsigned eleBufID;
 	unsigned posBufID;
 	unsigned norBufID;
