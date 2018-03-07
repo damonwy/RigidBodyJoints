@@ -1,6 +1,6 @@
 #pragma once
-#ifndef __QuadProg_H__
-#define __QuadProg_H__
+#ifndef RIGIDBODYJOINTS_SRC_QUADPROG_H_
+#define RIGIDBODYJOINTS_SRC_QUADPROG_H_
 
 #include <Eigen/Dense>
 #include <Eigen/Sparse>
@@ -39,4 +39,4 @@ public:
 	virtual Eigen::VectorXd getDualUpper() = 0;
 };
 
-#endif
+#endif // RIGIDBODYJOINTS_SRC_QUADPROG_H_

@@ -1,7 +1,6 @@
 #pragma once
-#ifndef ____QuadProgMosek__
-#define ____QuadProgMosek__
-
+#ifndef RIGIDBODYJOINTS_SRC_QUADPROGMOSEK_H_
+#define RIGIDBODYJOINTS_SRC_QUADPROGMOSEK_H_
 #include "QuadProg.h"
 
 #include <memory>
@@ -73,4 +72,4 @@ public:
 	bool setParamDouble(int name, double value);
 };
 
-#endif // ____MosekQuadProgram__
+#endif // RIGIDBODYJOINTS_SRC_QUADPROGMOSEK_H_

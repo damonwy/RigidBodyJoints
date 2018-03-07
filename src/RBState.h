@@ -1,7 +1,7 @@
 #pragma once
 
-#ifndef __RBState__
-#define __RBState__
+#ifndef RIGIDBODYJOINTS_SRC_RBSTATE_H_
+#define RIGIDBODYJOINTS_SRC_RBSTATE_H_
 
 #include <vector>
 #include <memory>
@@ -55,7 +55,7 @@ struct RBState
 	void setTransformationMatrix(Eigen::MatrixXd _E);
 	void setRotational(Eigen::Matrix3d _R);
 	void setLocalFrameOrigin(Eigen::Vector3d _p);
-	void setBodyForce();
+	void setBodyForce(Eigen::VectorXd force);
 
 	Eigen::VectorXd computeForces(double h);
 	void computeTempE(double h);
@@ -84,4 +84,4 @@ struct RBState
 	}
 };
 
-#endif
+#endif // RIGIDBODYJOINTS_SRC_RBSTATE_H_

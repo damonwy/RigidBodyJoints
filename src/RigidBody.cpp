@@ -1,17 +1,21 @@
 #define TETLIBRARY
 #include "RigidBody.h"
+
 #include <iostream>
 #define GLM_FORCE_RADIANS
 #include <glm/glm.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
-#include "Particle.h"
-#include "MatrixStack.h"
-#include "Program.h"
 #include "GLSL.h"
-#include "RBState.h"
 #include "Joint.h"
+#include "MatrixStack.h"
 #include "odeBoxBox.h"
+#include "MatlabDebug.h"
+#include "Particle.h"
+#include "Program.h"
+#include "RBState.h"
+#include "Spring.h"
+
 #include <unsupported/Eigen/src/MatrixFunctions/MatrixExponential.h>
 
 using namespace std;
@@ -21,10 +25,10 @@ typedef Eigen::Triplet<double> ETriplet;
 double inf = numeric_limits<double>::infinity();
 
 RigidBody::RigidBody() {
-	this->numRB = 6;
-	this->numJoints = 4;
+	this->numRB = 4;
+	this->numJoints = 1;
 	this->numFixed = 2;
-	this->yfloor = 0.0;
+	this->yfloor = -0.0;
 	this->ynormal << 0.0, 1.0, 0.0;
 	this->I.setIdentity();
 	gamma.resize(3, 6);
@@ -34,6 +38,9 @@ RigidBody::RigidBody() {
 	numVars = numRB * 6;
 	numEqualities = 0;
 	numInequalities = 0;
+
+	joint_forces.resize(numVars);
+	joint_forces.setZero();
 
 	g << 0.0, -9.8, 0.0;
 
@@ -63,17 +70,15 @@ RigidBody::RigidBody() {
 	init_p.resize(3 * numRB);
 
 	init_v.setZero();
-	init_v.segment<3>(3 * 1) << 14.0, 0.0, 0.0;
+	init_v.segment<3>(3 * 1) << -10.0, 0.0, 0.0;
 	
 	init_w.setZero();
 	//init_w << 0, 0, 0, 0, 0, 0;
-	init_p << 0.0, 16.0, 0.0,
-		0.0, 12.5, 0.0,
-		0.0, 9.5, 0.0,
-		1.0, 7.5, 0.0,
-		4.0, 7.5, 0.0,
-		0.0, 1.0, 0.0;
-			
+	init_p << 
+		0.0, 12.0, 0.0,
+		0.0, 6.0, 0.0,
+		6.0, 3.0, 1.0,
+		15.0, 7.5, 2.0;		
 
 	MatrixXd init_R, init_E;
 	init_R.resize(3 * numRB, 3);
@@ -82,7 +87,7 @@ RigidBody::RigidBody() {
 		init_R.block<3, 3>(i * 3, 0) = I;
 	}
 	
-	init_R.block<3, 3>(9, 0) << 0, -1, 0,
+	/*init_R.block<3, 3>(9, 0) << 0, -1, 0,
 		1, 0, 0,
 		0, 0, 1;
 	init_R.block<3, 3>(12, 0) << 0, -1, 0,
@@ -91,10 +96,17 @@ RigidBody::RigidBody() {
 	init_R.block<3, 3>(15, 0) << 0, -1, 0,
 		1, 0, 0,
 		0, 0, 1;
+	*/
+	init_R.block<3, 3>(9, 0) << 0, -1, 0,
+		1, 0, 0,
+		0, 0, 1;
 
+	init_R.block<3, 3>(6, 0) << sqrt(2)/2.0, 0, -sqrt(2) / 2.0,
+		0, 1, 0,
+		sqrt(2) / 2.0, 0, sqrt(2) / 2.0;
 
 	init_fixed_rb.resize(numFixed);
-	init_fixed_rb << 0, 5;
+	init_fixed_rb << 0, 3;
 	convec.resize(6);
 	conveck.resize(6);
 	Vector3d dimensions;
@@ -119,7 +131,6 @@ RigidBody::RigidBody() {
 				out.pointlist[3 * j + 1],
 				out.pointlist[3 * j + 2];
 			p->v.setZero();
-
 		}
 	}
 
@@ -127,22 +138,23 @@ RigidBody::RigidBody() {
 	for (int i = 0; i < numJoints; i++) {
 		auto jt = make_shared<Joint>();
 		joints.push_back(jt);
-		jt->type = HINGE_JOINT_Z;
+		// specify joint type here
+		jt->type = HINGE_JOINT;
+		if (jt->type == HINGE_JOINT) {
+			jt->hinge_type = HINGE_JOINT_Z;
+		}
+
 		jt->i = i;
 		jt->k = i + 1;
 		jt->index = i;
 		jt->Eij.block<3, 3>(0, 0) = I;
-		jt->Eij.block<3, 1>(0, 3) << 0.0, -2.0, 0.0;
+		jt->Eij.block<3, 1>(0, 3) << 0.0, -3.0, 0.0;
 	}
-	/*joints[1]->type = BALL_JOINT;
-	joints[1]->i = 0;
-	joints[1]->k = 2;
-	joints[1]->Eij.block<3, 1>(0, 3) << 0.0, 2.0, 0.0;
+	
+	// Initialize Springs
 
-	joints[2]->type = BALL_JOINT;
-	joints[2]->i = 1;
-	joints[2]->k = 3;
-	joints[2]->Eij.block<3, 1>(0, 3) << 0.0, -1.5, 0.0;*/
+	double stiffness = 1e2;
+	springs.push_back(createSpring(1, 3, 0, 3, bodies, stiffness));
 
 	// Compute the number of equality constraints
 	for (int i = 0; i < numJoints; i++) {
@@ -171,7 +183,6 @@ RigidBody::RigidBody() {
 			eleBuf[3 * i + j] = 3 * i + j;
 		}
 	}
-	
 }
 
 MatrixXd RigidBody::computeAdjoint(MatrixXd E) {
@@ -215,7 +226,35 @@ void RigidBody::step(double h) {
 	A.setFromTriplets(A_.begin(), A_.end());
 	program->setObjectiveMatrix(A);
 
+	//sparse_to_file_as_dense(A, "A");
+
 	// Initialize b vector
+
+	// Set spring forces
+	for (int i = 0; i < springs.size(); i++) {
+		auto b0 = bodies[springs[i]->i];
+		auto b1 = bodies[springs[i]->k];
+
+		auto n0 = b0->nodes[springs[i]->in];
+		auto n1 = b1->nodes[springs[i]->kn];
+
+		Vector3d d = (n0->x - n1->x).normalized();
+		double l = (n0->x - n1->x).norm();
+		double f = springs[i]->E * (l / springs[i]->L - 1.0);
+
+		Vector3d f0 = -f * d;
+		Vector3d f1 = -f0;
+
+		gamma.block<3, 3>(0, 0) = vec2crossmatrix(n0->x0).transpose();
+		VectorXd wrench0 = (b0->R * gamma).transpose() * f0;
+		gamma_k.block<3, 3>(0, 0) = vec2crossmatrix(n1->x0).transpose();
+		VectorXd wrench1 = (b1->R * gamma_k).transpose() * f1;
+
+		b0->setBodyForce(wrench0);
+		b1->setBodyForce(wrench1);
+	}
+
+
 	for (int i = 0; i < numRB; i++) {
 		RHS.segment<6>(6 * i) = bodies[i]->computeForces(h);
 	}
@@ -239,25 +278,25 @@ void RigidBody::step(double h) {
 		if (joints[i]->type == BALL_JOINT) {
 			for (int j = 0; j < 3; j++) {
 				for (int k = 0; k < 6; k++) {
-					G_.push_back(ETriplet(currentrow + j, 6 * joints[i]->i + k, Gi(j + 3, k)));
-					G_.push_back(ETriplet(currentrow + j, 6 * joints[i]->k + k, Gk(j + 3, k)));
+					G_.push_back(ETriplet(currentrow , 6 * joints[i]->i + k, Gi(j + 3, k)));
+					G_.push_back(ETriplet(currentrow , 6 * joints[i]->k + k, Gk(j + 3, k)));
 				}
+				currentrow += 1;
 			}
 		}
 
-		if (joints[i]->type == HINGE_JOINT_Z) {
+		if (joints[i]->type == HINGE_JOINT) {
+			
 			for (int j = 0; j < 6; j++) {
-				for (int k = 0; k < 6; k++) {
-					if (j != 2) {
-						G_.push_back(ETriplet(currentrow + j, 6 * joints[i]->i + k, Gi(j, k)));
-						G_.push_back(ETriplet(currentrow + j, 6 * joints[i]->k + k, Gk(j, k)));
-					}	
+				if (j != joints[i]->hinge_type) {
+					for (int k = 0; k < 6; k++) {
+						G_.push_back(ETriplet(currentrow, 6 * joints[i]->i + k, Gi(j, k)));
+						G_.push_back(ETriplet(currentrow, 6 * joints[i]->k + k, Gk(j, k)));
+					}
+					currentrow += 1;
 				}
 			}
 		}
-
-
-		currentrow += joints[i]->type;
 	}
 
 	// Push back fixed constraints
@@ -279,17 +318,23 @@ void RigidBody::step(double h) {
 	program->setEqualityMatrix(GG);
 	program->setEqualityVector(equalvec);
 
+	//sparse_to_file_as_dense(GG, "GG");
+
 	bool success = program->solve();
 	sol = program->getPrimalSolution();
+	joint_forces = -GG.transpose() * program->getDualEquality()/h;
+	
+	//vec_to_file(sol, "sol");
+
 
 	for (int i = 0; i < numRB; i++) {
 		bodies[i]->setAngularVelocity(sol.segment<3>(6 * i + 0));
 		bodies[i]->setLinearVelocity(sol.segment<3>(6 * i + 3));
 		bodies[i]->computeTempE(h);
-		//bodies[i]->updateTransformationMatrix(h);
 	}
 
 	// Update node positions to detect collisions with floor
+	numInequalities = 0;
 	numColFloor = 0;
 	for (int i = 0; i < numRB; i++) {
 		auto b = bodies[i];
@@ -308,24 +353,24 @@ void RigidBody::step(double h) {
 	numInequalities += numColFloor;
 	numColBoxBox = 0;
 	contacts.clear();
+
 	// Detect collisions between rigid bodies
 	for (int i = 0; i < numRB; i++) {
 
-		if (i != 5) { //TODO: modify to the index of all the rigid bodies
+		if (i != 2) { //TODO: modify to the index of all the rigid bodies
 			auto b = bodies[i];
-			auto cts = make_shared<Contacts>(odeBoxBox(b->E, b->dimensions, bodies[5]->E, bodies[5]->dimensions));  // TODO : modify to the index of all the rigid bodies
+			auto cts = make_shared<Contacts>(odeBoxBox(b->E, b->dimensions, bodies[2]->E, bodies[2]->dimensions));  // TODO : modify to the index of all the rigid bodies
 			if (cts->count > 0) {
 				cts->i = i;
-				cts->k = 5; //TODO
+				cts->k = 2; //TODO
 				contacts.push_back(cts);
 				numColBoxBox += cts->count;
-				cout << numColBoxBox << endl;
 			}
 		}
 	}
 
 	numInequalities += numColBoxBox;
-	cout << numInequalities << endl;
+	
 	// Add Inequalities constraints
 	if (numInequalities == 0) {
 		for (int i = 0; i < numRB; i++) {
@@ -341,15 +386,19 @@ void RigidBody::step(double h) {
 		C.resize(numInequalities, numVars);
 		program->setNumberOfInequalities(numInequalities);
 
-
 		int currentrow = 0;
-		// Push back constraints with floor
+
+		// Floor collisions
 		for (int i = 0; i < numColFloor; i++) {
 
 			int ib = colList[2 * i + 0]; // the index of rigid body 
 			int in = colList[2 * i + 1]; // the index of node 
 
-			gamma.block(0, 0, 3, 3) = vec2crossmatrix(bodies[ib]->nodes[in]->x0).transpose();
+			gamma.block<3, 3>(0, 0) = vec2crossmatrix(bodies[ib]->nodes[in]->x0).transpose();
+			// R and p were not updated yet... were still the values before the collsion 
+
+			//Matrix3d Rtemp = bodies[ib]->Etemp.block<3, 3>(0, 0);
+			//convec = ynormal.transpose() * Rtemp * gamma;
 
 			convec = ynormal.transpose() * bodies[ib]->R * gamma; // 1x6 vector that should be in the constraint matrix
 
@@ -360,9 +409,7 @@ void RigidBody::step(double h) {
 		}
 
 		currentrow += numColFloor;
-		cout << numColFloor << endl;
-		cout << numInequalities << endl;
-
+		
 		// Push back constraints with rigid bodies
 		for (int i = 0; i < contacts.size(); i++) {
 			auto cts = contacts[i];
@@ -373,19 +420,25 @@ void RigidBody::step(double h) {
 				Vector3d xi = local2world(bodies[cts->i]->Etemp.inverse(), x0);
 				Vector3d xk = local2world(bodies[cts->k]->Etemp.inverse(), x0);
 
+
 				gamma.block(0, 0, 3, 3) = vec2crossmatrix(xi).transpose();
-				convec = cts->normal.transpose() * bodies[cts->i]->R * gamma;
+
+				Matrix3d Ri = bodies[cts->i]->Etemp.block<3, 3>(0, 0);
+				//convec = cts->normal.transpose() * bodies[cts->i]->R * gamma;
+				
+				convec = cts->normal.transpose() * Ri * gamma;
+				Matrix3d Rk = bodies[cts->k]->Etemp.block<3, 3>(0, 0);
 
 				gamma_k.block<3, 3>(0, 0) = vec2crossmatrix(xk).transpose();
-				conveck = cts->normal.transpose() * bodies[cts->k]->R * gamma_k;
+				//conveck = cts->normal.transpose() * bodies[cts->k]->R * gamma_k;
+
+				conveck = cts->normal.transpose() * Rk * gamma_k;
+
 			
 				for (int t = 0; t < 6; t++) {
 					C_.push_back(ETriplet(currentrow, 6 * cts->i + t, convec(t)));
 					C_.push_back(ETriplet(currentrow, 6 * cts->k + t, -conveck(t)));
-					cout << 6 * cts->i + t << endl;
-					cout << 6 * cts->k + t << endl;
 				}
-				cout << currentrow << endl;
 				currentrow += 1;
 				
 			}
@@ -395,9 +448,19 @@ void RigidBody::step(double h) {
 
 		program->setInequalityMatrix(C);
 		program->setInequalityVector(inequalvec);
-		
+
+		//sparse_to_file_as_dense(C, "C");
+		//sparse_to_file_as_dense(GG, "GG");
+
+		// Initialize equality vector
+		equalvec.resize(numEqualities);
+		equalvec.setZero();
+
 		bool success = program->solve();
 		sol = program->getPrimalSolution();
+		//vec_to_file(sol, "sol");
+
+		joint_forces = -GG.transpose() * program->getDualEquality() / h;
 
 		for (int i = 0; i < numRB; i++) {
 			bodies[i]->setAngularVelocity(sol.segment<3>(6 * i + 0));
@@ -408,8 +471,6 @@ void RigidBody::step(double h) {
 		C_.clear();
 		colList.clear();
 	}
-
-
 	updatePosNor();
 }
 
@@ -521,12 +582,20 @@ void RigidBody::draw(shared_ptr<MatrixStack> MV, const shared_ptr<Program> p, co
 				glBegin(GL_POINTS);
 				glVertex3f(float(p1(0)), float(p1(1)), float(p1(2)));
 				glEnd();
-
 			}
 		}
-
 	}
-	
+
+	glColor3f(0.0, 0.0, 0.0); // black
+	glLineWidth(5);
+	for (int i = 0; i < springs.size(); i++) {
+		Vector3d p0 = bodies[springs[i]->i]->nodes[springs[i]->in]->x;
+		Vector3d p1 = bodies[springs[i]->k]->nodes[springs[i]->kn]->x;
+		glBegin(GL_LINES);
+		glVertex3f(float(p0(0)), float(p0(1)), float(p0(2)));
+		glVertex3f(float(p1(0)), float(p1(1)), float(p1(2)));
+		glEnd();
+	}
 
 	MV->popMatrix();
 	p2->unbind();
@@ -590,4 +659,19 @@ Vector3d RigidBody::world2local(MatrixXd E, Vector3d x) {
 
 	Vector3d xw = (E * xh).segment<3>(0);
 	return xw;
+}
+
+shared_ptr<Spring> RigidBody::createSpring(int _i, int _k, int _in, int _kn, vector < shared_ptr<RBState> > bodies, double E)
+{	
+	auto s = make_shared<Spring>(bodies[_i]->nodes[_in], bodies[_k]->nodes[_kn]);
+	s->i = _i;
+	s->k = _k;
+	s->in = _in;
+	s->kn = _kn;
+	s->E = E;
+	Vector3d x0 = bodies[_i]->nodes[_in]->x0;
+	Vector3d x1 = bodies[_k]->nodes[_kn]->x0;
+	Vector3d dx = x1 - x0;
+	s->L = dx.norm();
+	return s;
 }

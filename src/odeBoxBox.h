@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _ODEBOXBOX_
-#define _ODEBOXBOX_
+#ifndef RIGIDBODYJOINTS_SRC_ODEBOXBOX_H_
+#define RIGIDBODYJOINTS_SRC_ODEBOXBOX_H_
 
 #include <Eigen/Dense>
 
@@ -24,4 +24,4 @@ Contacts odeBoxBox(
 	const Eigen::Matrix4d &M1, const Eigen::Vector3d &dimensions1,
 	const Eigen::Matrix4d &M2, const Eigen::Vector3d &dimensions2);
 
-#endif
+#endif // RIGIDBODYJOINTS_SRC_ODEBOXBOX_H_

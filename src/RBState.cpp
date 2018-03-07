@@ -25,13 +25,20 @@ void RBState::setTransformationMatrix(MatrixXd _E) {
 	this->E = _E;
 	R = E.block(0, 0, 3, 3);
 	p = E.block(0, 3, 3, 1);
-	setBodyForce();
+	VectorXd force;
+	force.resize(6);
+	force.setZero();
+
+	setBodyForce(force);
 }
 
 void RBState::setRotational(Matrix3d _R) {
 	this->R = _R;
 	this->E.block<3, 3>(0, 0) = R; // update E
-	setBodyForce();
+	VectorXd force;
+	force.resize(6);
+	force.setZero();
+	setBodyForce(force);
 }
 
 void RBState::setSpatialInertiaMatrix() {
@@ -69,11 +76,13 @@ void RBState::setAngularVelocity(Eigen::Vector3d _Omega) {
 	PhiT = PHI.transpose();
 }
 
-void RBState::setBodyForce() {
+void RBState::setBodyForce(VectorXd force) {
 	// if only gravity is involved
 	Eigen::Vector3d g;
 	g << 0.0, -9.8, 0.0;
+	B.setZero();
 	B.segment<3>(3) = R.transpose() * mass * g;
+	B = B + force;
 }
 
 
@@ -116,6 +125,10 @@ void RBState::updateTransformationMatrix(double h) {
 	E = E * (h * EE).exp();
 	R = E.block(0, 0, 3, 3);
 	p = E.block(0, 3, 3, 1);
-	setBodyForce();
+	VectorXd force;
+	force.resize(6);
+	force.setZero();
+
+	setBodyForce(force);
 }
 

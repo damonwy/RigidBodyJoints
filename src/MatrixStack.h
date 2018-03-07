@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _MatrixStack_H_
-#define _MatrixStack_H_
+#ifndef RIGIDBODYJOINTS_SRC_MATRIXSTACK_H_
+#define RIGIDBODYJOINTS_SRC_MATRIXSTACK_H_
 
 #include <stack>
 #include <memory>
@@ -47,4 +47,4 @@ private:
 	
 };
 
-#endif
+#endif // RIGIDBODYJOINTS_SRC_MATRIXSTACK_H_

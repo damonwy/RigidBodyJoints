@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _SHAPE_H_
-#define _SHAPE_H_
+#ifndef RIGIDBODYJOINTS_SRC_SHAPE_H_
+#define RIGIDBODYJOINTS_SRC_SHAPE_H_
 
 #include <string>
 #include <vector>
@@ -33,4 +33,4 @@ private:
 	unsigned texBufID;
 };
 
-#endif
+#endif // RIGIDBODYJOINTS_SRC_SHAPE_H_

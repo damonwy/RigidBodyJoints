@@ -1,6 +1,6 @@
 #pragma once
-#ifndef __Particle__
-#define __Particle__
+#ifndef RIGIDBODYJOINTS_SRC_PARTICLE_H_
+#define RIGIDBODYJOINTS_SRC_PARTICLE_H_
 
 #include <vector>
 #include <memory>
@@ -40,4 +40,4 @@ private:
 	const std::shared_ptr<Shape> sphere;
 };
 
-#endif
+#endif // RIGIDBODYJOINTS_SRC_PARTICLE_H_

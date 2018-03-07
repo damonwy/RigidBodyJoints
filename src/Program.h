@@ -1,6 +1,6 @@
 #pragma  once
-#ifndef __Program__
-#define __Program__
+#ifndef RIGIDBODYJOINTS_SRC_PROGRAM_H_
+#define RIGIDBODYJOINTS_SRC_PROGRAM_H_
 
 #include <map>
 #include <string>
@@ -41,4 +41,4 @@ private:
 	bool verbose;
 };
 
-#endif
+#endif // RIGIDBODYJOINTS_SRC_PROGRAM_H_

@@ -5,8 +5,8 @@
 //
 
 #pragma once
-#ifndef __GLSL__
-#define __GLSL__
+#ifndef RIGIDBODYJOINTS_SRC_GLSL_H_
+#define RIGIDBODYJOINTS_SRC_GLSL_H_
 
 #define GLEW_STATIC
 #include <GL/glew.h>
@@ -37,4 +37,4 @@ namespace GLSL {
 	char *textFileRead(const char *filename);
 }
 
-#endif
+#endif // RIGIDBODYJOINTS_SRC_GLSL_H_

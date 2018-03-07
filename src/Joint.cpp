@@ -42,6 +42,10 @@ void Joint::computeEjk(const vector< shared_ptr<RBState> > bodies) {
 	Ejk = Eij.inverse() * bodies[i]->E.inverse() * bodies[k]->E;
 }
 
+void Joint::computeEjkTemp(const vector< shared_ptr<RBState> > bodies) {
+	Ejk = Eij.inverse() * bodies[i]->Etemp.inverse() * bodies[k]->Etemp;
+}
+
 MatrixXd Joint::computeAdjoint(Matrix4d E) {
 	Vector3d p = E.block<3, 1>(0, 3);
 	Matrix3d R = E.block<3, 3>(0, 0);

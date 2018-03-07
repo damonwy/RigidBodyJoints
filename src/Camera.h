@@ -1,6 +1,6 @@
 #pragma  once
-#ifndef __Camera__
-#define __Camera__
+#ifndef RIGIDBODYJOINTS_SRC_CAMERA_H_
+#define RIGIDBODYJOINTS_SRC_CAMERA_H_
 
 #include <memory>
 
@@ -47,4 +47,4 @@ private:
 	float sfactor;
 };
 
-#endif
+#endif // RIGIDBODYJOINTS_SRC_CAMERA_H_

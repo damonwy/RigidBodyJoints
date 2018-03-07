@@ -1,6 +1,6 @@
 #pragma once
-#ifndef __Scene__
-#define __Scene__
+#ifndef RIGIDBODYJOINTS_SRC_SCENE_H_
+#define RIGIDBODYJOINTS_SRC_SCENE_H_
 
 #include <vector>
 #include <memory>
@@ -45,4 +45,4 @@ private:
 	std::shared_ptr<RigidBody> rigidbody;
 };
 
-#endif
+#endif // RIGIDBODYJOINTS_SRC_SCENE_H_

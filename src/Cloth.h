@@ -1,7 +1,6 @@
 #pragma once
-#ifndef __Cloth__
-#define __Cloth__
-
+#ifndef RIGIDBODYJOINTS_SRC_CLOTH_H_
+#define RIGIDBODYJOINTS_SRC_CLOTH_H_
 #include <vector>
 #include <memory>
 
@@ -60,4 +59,4 @@ private:
 	unsigned texBufID;
 };
 
-#endif
+#endif // RIGIDBODYJOINTS_SRC_CLOTH_H_
