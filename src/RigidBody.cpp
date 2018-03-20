@@ -31,8 +31,8 @@ RigidBody::RigidBody() {
 	this->numSprings = 1;
 	this->numFixed = 2;
 	this->yfloor = -0.0;
-	this->isBoxBoxCol = false;
-	this->isFloorCol = false;
+	this->isBoxBoxCol = true;
+	this->isFloorCol = true;
 
 	initConstant();
 	initAfterNumRB();
@@ -261,24 +261,125 @@ void RigidBody::computeSpringForces() {
 	}
 }
 
-void RigidBody::step(double h) {
+void RigidBody::setJointConstraints(int &currentrow) {
+	MatrixXd Gi, Gk;
+	Gi.resize(6, 6);
+	Gk.resize(6, 6);
 
-	shared_ptr<QuadProgMosek> program_ = make_shared <QuadProgMosek>();
-	program = program_;
-	program_->setParamInt(MSK_IPAR_OPTIMIZER, MSK_OPTIMIZER_INTPNT);
-	program_->setParamInt(MSK_IPAR_LOG, 10);
-	program_->setParamInt(MSK_IPAR_LOG_FILE, 1);
-	program_->setParamDouble(MSK_DPAR_INTPNT_QO_TOL_DFEAS, 1e-8);
-	program_->setParamDouble(MSK_DPAR_INTPNT_QO_TOL_INFEAS, 1e-10);
-	program_->setParamDouble(MSK_DPAR_INTPNT_QO_TOL_MU_RED, 1e-8);
-	program_->setParamDouble(MSK_DPAR_INTPNT_QO_TOL_NEAR_REL, 1e3);
-	program_->setParamDouble(MSK_DPAR_INTPNT_QO_TOL_PFEAS, 1e-8);
-	program_->setParamDouble(MSK_DPAR_INTPNT_QO_TOL_REL_GAP, 1e-8);
+	for (int i = 0; i < numJoints; i++) {
+		Gi = joints[i]->computeAdjoint(joints[i]->Eij.inverse());
+		joints[i]->computeEjk(bodies);
+		Gk = -joints[i]->computeAdjoint(joints[i]->Ejk); // careful about the sign!
 
-	program->setNumberOfVariables(numVars);
-	program->setLowerVariableBound(xl);
-	program->setUpperVariableBound(xu);
+		if (joints[i]->type == BALL_JOINT) {
+			for (int j = 0; j < 3; j++) {
+				for (int k = 0; k < 6; k++) {
+					G_.push_back(ETriplet(currentrow, 6 * joints[i]->i + k, Gi(j + 3, k)));
+					G_.push_back(ETriplet(currentrow, 6 * joints[i]->k + k, Gk(j + 3, k)));
+				}
+				currentrow += 1;
+			}
+		}
 
+		if (joints[i]->type == HINGE_JOINT) {
+
+			for (int j = 0; j < 6; j++) {
+				if (j != joints[i]->hinge_type) {
+					for (int k = 0; k < 6; k++) {
+						G_.push_back(ETriplet(currentrow, 6 * joints[i]->i + k, Gi(j, k)));
+						G_.push_back(ETriplet(currentrow, 6 * joints[i]->k + k, Gk(j, k)));
+					}
+					currentrow += 1;
+				}
+			}
+		}
+	}
+}
+
+void RigidBody::setFixedConstraints(int &currentrow) {
+	// Push back fixed constraints
+	for (int i = 0; i < numFixed; i++) {
+		for (int j = 0; j < 6; j++) {
+			G_.push_back(ETriplet(currentrow + j, 6 * init_fixed_rb(i) + j, 1));
+		}
+		currentrow += 6;
+	}
+}
+
+void RigidBody::detectFloorCol() {
+	numColFloor = 0;
+
+	for (int i = 0; i < numRB; i++) {
+		auto b = bodies[i];
+
+		for (int j = 0; j < b->nodes.size(); j++) {
+			auto n = b->nodes[j];
+			n->xo = n->x;
+			n->x = local2world(b->Etemp, n->x0);
+			if (n->x(1) < yfloor) {
+				colList.push_back(i);
+				colList.push_back(j);
+				numColFloor += 1;
+			}
+		}
+	}
+	numInequalities += numColFloor;
+}
+
+void RigidBody::detectBoxBoxCol() {
+	contacts.clear();
+
+	numColBoxBox = 0;
+	// Detect collisions between rigid bodies
+	for (int i = 0; i < numRB; i++) {
+
+		if (i != 2) { //TODO: modify to the index of all the rigid bodies
+			auto b = bodies[i];
+			auto cts = make_shared<Contacts>(odeBoxBox(b->E, b->dimensions, bodies[2]->E, bodies[2]->dimensions));  // TODO : modify to the index of all the rigid bodies
+			if (cts->count > 0) {
+				cts->i = i;
+				cts->k = 2; //TODO
+				contacts.push_back(cts);
+				numColBoxBox += cts->count;
+			}
+		}
+	}
+
+	numInequalities += numColBoxBox;
+
+}
+
+void RigidBody::setInequality() {
+
+}
+
+void RigidBody::setEquality() {
+	// Initialize G matrix
+	int currentrow = 0;
+	G_.clear();
+
+	if (numJoints != 0) {
+		setJointConstraints(currentrow);
+	}
+
+	if (numFixed != 0) {
+		setFixedConstraints(currentrow);
+	}
+
+	GG.resize(numEqualities, numVars);
+	GG.setFromTriplets(G_.begin(), G_.end());
+	//sparse_to_file_as_dense(GG, "GG");
+
+	// Initialize equality vector
+	equalvec.resize(numEqualities);
+	equalvec.setZero();
+
+	program->setNumberOfEqualities(numEqualities);
+	program->setEqualityMatrix(GG);
+	program->setEqualityVector(equalvec);
+}
+
+void RigidBody::setObjective(double h) {
 	// Initialize A matrix
 	A_.clear();
 	for (int i = 0; i < numRB; i++) {
@@ -302,118 +403,53 @@ void RigidBody::step(double h) {
 		RHS.segment<6>(6 * i) = bodies[i]->computeForces(h);
 	}
 	program->setObjectiveVector(-RHS);
+}
 
-	MatrixXd Gi, Gk;
-	Gi.resize(6, 6);
-	Gk.resize(6, 6);
+void RigidBody::step(double h) {
 
-	G_.clear();
+	shared_ptr<QuadProgMosek> program_ = make_shared <QuadProgMosek>();
+	program = program_;
+	program_->setParamInt(MSK_IPAR_OPTIMIZER, MSK_OPTIMIZER_INTPNT);
+	program_->setParamInt(MSK_IPAR_LOG, 10);
+	program_->setParamInt(MSK_IPAR_LOG_FILE, 1);
+	program_->setParamDouble(MSK_DPAR_INTPNT_QO_TOL_DFEAS, 1e-8);
+	program_->setParamDouble(MSK_DPAR_INTPNT_QO_TOL_INFEAS, 1e-10);
+	program_->setParamDouble(MSK_DPAR_INTPNT_QO_TOL_MU_RED, 1e-8);
+	program_->setParamDouble(MSK_DPAR_INTPNT_QO_TOL_NEAR_REL, 1e3);
+	program_->setParamDouble(MSK_DPAR_INTPNT_QO_TOL_PFEAS, 1e-8);
+	program_->setParamDouble(MSK_DPAR_INTPNT_QO_TOL_REL_GAP, 1e-8);
 
-	// Initialize G matrix
-	int currentrow = 0;
+	program->setNumberOfVariables(numVars);
+	program->setLowerVariableBound(xl);
+	program->setUpperVariableBound(xu);
 
-	// Push back joints constraints
-	for (int i = 0; i < numJoints; i++) {
-		Gi = joints[i]->computeAdjoint(joints[i]->Eij.inverse());
-		joints[i]->computeEjk(bodies);
-		Gk = -joints[i]->computeAdjoint(joints[i]->Ejk); // careful about the sign!
-
-		if (joints[i]->type == BALL_JOINT) {
-			for (int j = 0; j < 3; j++) {
-				for (int k = 0; k < 6; k++) {
-					G_.push_back(ETriplet(currentrow , 6 * joints[i]->i + k, Gi(j + 3, k)));
-					G_.push_back(ETriplet(currentrow , 6 * joints[i]->k + k, Gk(j + 3, k)));
-				}
-				currentrow += 1;
-			}
-		}
-
-		if (joints[i]->type == HINGE_JOINT) {
-			
-			for (int j = 0; j < 6; j++) {
-				if (j != joints[i]->hinge_type) {
-					for (int k = 0; k < 6; k++) {
-						G_.push_back(ETriplet(currentrow, 6 * joints[i]->i + k, Gi(j, k)));
-						G_.push_back(ETriplet(currentrow, 6 * joints[i]->k + k, Gk(j, k)));
-					}
-					currentrow += 1;
-				}
-			}
-		}
-	}
-
-	// Push back fixed constraints
-	for (int i = 0; i < numFixed; i++) {
-		for (int j = 0; j < 6; j++) {
-			G_.push_back(ETriplet(currentrow + j, 6 * init_fixed_rb(i) + j, 1));
-		}
-		currentrow += 6;
-	}
-
-	GG.resize(numEqualities, numVars);
-	GG.setFromTriplets(G_.begin(), G_.end());
-
-	// Initialize equality vector
-	equalvec.resize(numEqualities);
-	equalvec.setZero();
-
-	program->setNumberOfEqualities(numEqualities);
-	program->setEqualityMatrix(GG);
-	program->setEqualityVector(equalvec);
-
-	//sparse_to_file_as_dense(GG, "GG");
+	setObjective(h);
+	setEquality();
 
 	bool success = program->solve();
 	sol = program->getPrimalSolution();
+
 	//joint_forces = -GG.transpose() * program->getDualEquality()/h;
-	
 	//vec_to_file(sol, "sol");
 
-
-	for (int i = 0; i < numRB; i++) {
+	for (int i = 0; i < numRB; i++) {	// Update node positions to detect collisions with floor
 		bodies[i]->setAngularVelocity(sol.segment<3>(6 * i + 0));
 		bodies[i]->setLinearVelocity(sol.segment<3>(6 * i + 3));
 		bodies[i]->computeTempE(h);
 	}
 
-	// Update node positions to detect collisions with floor
 	numInequalities = 0;
-	numColFloor = 0;
-	for (int i = 0; i < numRB; i++) {
-		auto b = bodies[i];
-
-		for (int j = 0; j < b->nodes.size(); j++) {
-			auto n = b->nodes[j];
-			n->xo = n->x;
-			n->x = local2world(b->Etemp, n->x0);
-			if (n->x(1) < yfloor) {
-				colList.push_back(i);
-				colList.push_back(j);
-				numColFloor += 1;
-			}
-		}
-	}
-	numInequalities += numColFloor;
 	numColBoxBox = 0;
-	contacts.clear();
-
-	// Detect collisions between rigid bodies
-	for (int i = 0; i < numRB; i++) {
-
-		if (i != 2) { //TODO: modify to the index of all the rigid bodies
-			auto b = bodies[i];
-			auto cts = make_shared<Contacts>(odeBoxBox(b->E, b->dimensions, bodies[2]->E, bodies[2]->dimensions));  // TODO : modify to the index of all the rigid bodies
-			if (cts->count > 0) {
-				cts->i = i;
-				cts->k = 2; //TODO
-				contacts.push_back(cts);
-				numColBoxBox += cts->count;
-			}
-		}
+	numColFloor = 0;
+	
+	if (isFloorCol == true) {
+		detectFloorCol();
 	}
 
-	numInequalities += numColBoxBox;
-	
+	if (isBoxBoxCol == true) {
+		detectBoxBoxCol();
+	}
+
 	// Add Inequalities constraints
 	if (numInequalities == 0) {
 		for (int i = 0; i < numRB; i++) {
@@ -501,9 +537,9 @@ void RigidBody::step(double h) {
 
 		bool success = program->solve();
 		sol = program->getPrimalSolution();
-		//vec_to_file(sol, "sol");
 
-		joint_forces = -GG.transpose() * program->getDualEquality() / h;
+		//vec_to_file(sol, "sol");
+		//joint_forces = -GG.transpose() * program->getDualEquality() / h;
 
 		for (int i = 0; i < numRB; i++) {
 			bodies[i]->setAngularVelocity(sol.segment<3>(6 * i + 0));

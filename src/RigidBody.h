@@ -31,12 +31,21 @@ public:
 	void initShape();
 	void initJoints();
 	void initSprings(double stiffness);
-	//void initOptionalParts(); // Init optional joints, fixed constraints, springs 
+	
 	void initRBs();
 	void initBuffers();
 	void updatePosNor();
 
 	void computeSpringForces();
+	void setJointConstraints(int &currentrow);
+	void setFixedConstraints(int &currentrow);
+
+	void setEquality();
+	void setInequality();
+	void setObjective(double h);
+
+	void detectFloorCol();
+	void detectBoxBoxCol();
 
 	void draw(std::shared_ptr<MatrixStack> MV, const std::shared_ptr<Program> p, const std::shared_ptr<Program> p2, std::shared_ptr<MatrixStack> P)const;
 	void step(double h);
