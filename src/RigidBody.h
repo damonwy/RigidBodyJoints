@@ -26,7 +26,18 @@ class RigidBody {
 public:
 	RigidBody();
 	void init();
+	void initAfterNumRB();
+	void initConstant();
+	void initShape();
+	void initJoints();
+	void initSprings(double stiffness);
+	//void initOptionalParts(); // Init optional joints, fixed constraints, springs 
+	void initRBs();
+	void initBuffers();
 	void updatePosNor();
+
+	void computeSpringForces();
+
 	void draw(std::shared_ptr<MatrixStack> MV, const std::shared_ptr<Program> p, const std::shared_ptr<Program> p2, std::shared_ptr<MatrixStack> P)const;
 	void step(double h);
 	std::shared_ptr<Spring> createSpring(int _i, int _k, int _in, int _kn, std::vector < std::shared_ptr<RBState> > bodies, double E);
@@ -40,16 +51,22 @@ public:
 	int nTriFaces;
 	int nEdges;
 	Eigen::VectorXi init_fixed_rb;
-
+	double stiffness;
 	double mass;
 	double yfloor;
 	int numFixed;
 	int numColFloor;
 	int numColBoxBox;
 	int numJoints;
+	int numSprings;
 	int numVars;
 	int numEqualities;
 	int numInequalities;
+
+	bool isBoxBoxCol;	// is box to box collision on?
+	bool isFloorCol;	// is box to floor collision on?
+
+	Eigen::Vector3d dimensions;
 
 	Eigen::Vector3d ynormal;
 	std::shared_ptr<QuadProg> program;
@@ -60,6 +77,10 @@ public:
 	std::vector<ETriplet> C_;
 	Eigen::SparseMatrix<double> C;
 
+	Eigen::VectorXd init_v; // used to init the linear velocity of all the rigid bodies
+	Eigen::VectorXd init_w; // ................ angular velocity ......................
+	Eigen::VectorXd init_p; // ................ position ..............................
+	Eigen::MatrixXd init_R; // ................ rotation ..............................
 
 	Eigen::VectorXd xl;
 	Eigen::VectorXd xu;

@@ -25,97 +25,74 @@ typedef Eigen::Triplet<double> ETriplet;
 double inf = numeric_limits<double>::infinity();
 
 RigidBody::RigidBody() {
+	// change when model changes
 	this->numRB = 4;
 	this->numJoints = 1;
+	this->numSprings = 1;
 	this->numFixed = 2;
 	this->yfloor = -0.0;
-	this->ynormal << 0.0, 1.0, 0.0;
-	this->I.setIdentity();
-	gamma.resize(3, 6);
-	gamma.block<3, 3>(0, 3) = I;
-	gamma_k.resize(3, 6);
-	gamma_k.block<3, 3>(0, 3) = I;
-	numVars = numRB * 6;
-	numEqualities = 0;
-	numInequalities = 0;
+	this->isBoxBoxCol = false;
+	this->isFloorCol = false;
 
-	joint_forces.resize(numVars);
-	joint_forces.setZero();
+	initConstant();
+	initAfterNumRB();
+	initShape();
 
-	g << 0.0, -9.8, 0.0;
-
-	xl.resize(numVars);
-	xu.resize(numVars);
-	for (int i = 0; i < numVars; i++) {
-		xl(i) = -inf;
-		xu(i) = inf;
+	if (numFixed != 0) {
+		init_fixed_rb.resize(numFixed);
+		// Compute the number of equality constraints (part 2: fixed)
+		numEqualities += numFixed * 6;
 	}
 
-	in.load_ply("rectcube");
-	tetrahedralize("pqz", &in, &out);
-	nVerts = out.numberofpoints;
-	nTriFaces = out.numberoftrifaces;
-	nEdges = out.numberofedges;
-	mass = nVerts * 1.0;
-
-	// Create rigid body structs
-	for (int i = 0; i < numRB; i++) {
-		bodies.push_back(make_shared<RBState>());
+	if (numJoints != 0) {
+		initJoints();
 	}
-
-	// Initialize rigid bodies
-	VectorXd init_v, init_w, init_p;
-	init_v.resize(3 * numRB);
-	init_w.resize(3 * numRB);
-	init_p.resize(3 * numRB);
-
-	init_v.setZero();
-	init_v.segment<3>(3 * 1) << -10.0, 0.0, 0.0;
 	
-	init_w.setZero();
-	//init_w << 0, 0, 0, 0, 0, 0;
-	init_p << 
-		0.0, 12.0, 0.0,
+	// specify model parameters after this line ------------------
+
+	// Model 1:---------------------------------------------------
+	
+	/*this->numRB = 4;
+	this->numJoints = 1;
+	this->numSprings = 1;
+	this->numFixed = 2;
+	this->yfloor = -0.0;
+	this->isBoxBoxCol = true;
+	this->isFloorCol = true;
+
+	*/
+
+	init_v.segment<3>(3 * 1) << -10.0, 0.0, 0.0;
+	init_p << 0.0, 12.0, 0.0,
 		0.0, 6.0, 0.0,
 		6.0, 3.0, 1.0,
 		15.0, 7.5, 2.0;		
-
-	MatrixXd init_R, init_E;
-	init_R.resize(3 * numRB, 3);
-	init_R.block<3, 3>(0, 0) = I;
-	for (int i = 0; i < numRB; i++) {
-		init_R.block<3, 3>(i * 3, 0) = I;
-	}
-	
-	/*init_R.block<3, 3>(9, 0) << 0, -1, 0,
-		1, 0, 0,
-		0, 0, 1;
-	init_R.block<3, 3>(12, 0) << 0, -1, 0,
-		1, 0, 0,
-		0, 0, 1;
-	init_R.block<3, 3>(15, 0) << 0, -1, 0,
-		1, 0, 0,
-		0, 0, 1;
-	*/
 	init_R.block<3, 3>(9, 0) << 0, -1, 0,
-		1, 0, 0,
-		0, 0, 1;
-
+								1, 0, 0,
+								0, 0, 1;
 	init_R.block<3, 3>(6, 0) << sqrt(2)/2.0, 0, -sqrt(2) / 2.0,
-		0, 1, 0,
-		sqrt(2) / 2.0, 0, sqrt(2) / 2.0;
-
-	init_fixed_rb.resize(numFixed);
+								0, 1, 0,
+								sqrt(2) / 2.0, 0, sqrt(2) / 2.0;
 	init_fixed_rb << 0, 3;
-	convec.resize(6);
-	conveck.resize(6);
-	Vector3d dimensions;
-	dimensions << 2 * abs(out.pointlist[0]), 2 * abs(out.pointlist[1]), 2 * abs(out.pointlist[2]);
+	stiffness = 1e2;
 
+	//-------------------------------------------------------------
+	
 
+	initRBs();
+
+	if (numSprings != 0) {
+		// init after initRBs
+		initSprings(stiffness);
+	}
+
+	initBuffers();
+}
+
+void RigidBody::initRBs() {
 	// Initialize Rigid Bodies
 	for (int i = 0; i < numRB; i++) {
-		
+
 		bodies[i]->setDimensions(dimensions);
 		bodies[i]->setMass(mass);
 		bodies[i]->setLinearVelocity(init_v.segment<3>(3 * i));
@@ -133,11 +110,99 @@ RigidBody::RigidBody() {
 			p->v.setZero();
 		}
 	}
+}
 
-	// Initialize Joints
+void RigidBody::initBuffers() {
+	// Build buffers
+	posBuf.clear();
+	norBuf.clear();
+	texBuf.clear();
+	eleBuf.clear();
+
+	posBuf.resize(nTriFaces * 9 * numRB);
+	norBuf.resize(nTriFaces * 9 * numRB);
+	eleBuf.resize(nTriFaces * 3 * numRB);
+
+	updatePosNor();
+
+	for (int i = 0; i < numRB * nTriFaces; i++) {
+		for (int j = 0; j < 3; j++) {
+			eleBuf[3 * i + j] = 3 * i + j;
+		}
+	}
+}
+
+void RigidBody::initConstant() {
+	this->I.setIdentity();
+	numEqualities = 0;
+	numInequalities = 0;
+
+	this->ynormal << 0.0, 1.0, 0.0;
+	this->g << 0.0, -9.8, 0.0;
+
+	gamma.resize(3, 6);
+	gamma.block<3, 3>(0, 3) = I;
+	gamma_k.resize(3, 6);
+	gamma_k.block<3, 3>(0, 3) = I;
+	convec.resize(6);
+	conveck.resize(6);
+
+}
+
+void RigidBody::initAfterNumRB() {
+	numVars = numRB * 6;
+	//joint_forces.resize(numVars); // no need for now... might be useful later
+	//joint_forces.setZero();
+
+	// Initialize QP b vector and solution vector
+
+	RHS.resize(numVars);
+	RHS.setZero();
+	sol.resize(numVars);
+	xl.resize(numVars);
+	xu.resize(numVars);
+	for (int i = 0; i < numVars; i++) {
+		xl(i) = -inf;
+		xu(i) = inf;
+	}
+
+	// Create rigid body structs
+	for (int i = 0; i < numRB; i++) {
+		bodies.push_back(make_shared<RBState>());
+	}
+
+	// Initialize rigid bodies
+	init_v.resize(3 * numRB);
+	init_w.resize(3 * numRB);
+	init_p.resize(3 * numRB);
+	init_R.resize(3 * numRB, 3);
+
+	init_v.setZero();
+	init_w.setZero();
+	init_p.setZero();
+	for (int i = 0; i < numRB; i++) {
+		init_R.block<3, 3>(i * 3, 0) = I;
+	}
+
+
+}
+
+void RigidBody::initShape() {
+	in.load_ply("rectcube");
+	tetrahedralize("pqz", &in, &out);
+	this->nVerts = out.numberofpoints;
+	this->nTriFaces = out.numberoftrifaces;
+	this->nEdges = out.numberofedges;
+	mass = nVerts * 1.0;
+	dimensions << 2 * abs(out.pointlist[0]), 2 * abs(out.pointlist[1]), 2 * abs(out.pointlist[2]);
+
+}
+
+void RigidBody::initJoints() {
 	for (int i = 0; i < numJoints; i++) {
 		auto jt = make_shared<Joint>();
 		joints.push_back(jt);
+
 		// specify joint type here
 		jt->type = HINGE_JOINT;
 		if (jt->type == HINGE_JOINT) {
@@ -148,41 +213,15 @@ RigidBody::RigidBody() {
 		jt->k = i + 1;
 		jt->index = i;
 		jt->Eij.block<3, 3>(0, 0) = I;
-		jt->Eij.block<3, 1>(0, 3) << 0.0, -3.0, 0.0;
-	}
-	
-	// Initialize Springs
+		jt->Eij.block<3, 1>(0, 3) << 0.0, -dimensions(1)*0.5, 0.0; // use y direction 
 
-	double stiffness = 1e2;
+		// Compute the number of equality constraints (part 1: joints)
+		numEqualities += jt->type;
+	}
+}
+
+void RigidBody::initSprings(double stiffness) {
 	springs.push_back(createSpring(1, 3, 0, 3, bodies, stiffness));
-
-	// Compute the number of equality constraints
-	for (int i = 0; i < numJoints; i++) {
-		numEqualities += joints[i]->type;
-	}
-	numEqualities += numFixed * 6;
-
-	// Initialize QP b vector and solution vector
-	RHS.resize(numVars);
-	RHS.setZero();
-	sol.resize(numVars);
-
-	// Build buffers
-	posBuf.clear();
-	norBuf.clear();
-	texBuf.clear();
-	eleBuf.clear();
-
-	posBuf.resize(nTriFaces * 9 * numRB);
-	norBuf.resize(nTriFaces * 9 * numRB);
-	eleBuf.resize(nTriFaces * 3 * numRB);
-	
-	updatePosNor();
-	for (int i = 0; i < numRB * nTriFaces; i++) {
-		for (int j = 0; j < 3; j++) {
-			eleBuf[3 * i + j] = 3 * i + j;
-		}
-	}
 }
 
 MatrixXd RigidBody::computeAdjoint(MatrixXd E) {
@@ -195,6 +234,31 @@ MatrixXd RigidBody::computeAdjoint(MatrixXd E) {
 	Ad.block<3, 3>(3, 3) = R;
 	Ad.block<3, 3>(3, 0) = vec2crossmatrix(p)*R;
 	return Ad;
+}
+
+void RigidBody::computeSpringForces() {
+	for (int i = 0; i < springs.size(); i++) {
+		auto b0 = bodies[springs[i]->i];
+		auto b1 = bodies[springs[i]->k];
+
+		auto n0 = b0->nodes[springs[i]->in];
+		auto n1 = b1->nodes[springs[i]->kn];
+
+		Vector3d d = (n0->x - n1->x).normalized();
+		double l = (n0->x - n1->x).norm();
+		double f = springs[i]->E * (l / springs[i]->L - 1.0);
+
+		Vector3d f0 = -f * d;
+		Vector3d f1 = -f0;
+
+		gamma.block<3, 3>(0, 0) = vec2crossmatrix(n0->x0).transpose();
+		VectorXd wrench0 = (b0->R * gamma).transpose() * f0;
+		gamma_k.block<3, 3>(0, 0) = vec2crossmatrix(n1->x0).transpose();
+		VectorXd wrench1 = (b1->R * gamma_k).transpose() * f1;
+
+		b0->setBodyForce(wrench0);
+		b1->setBodyForce(wrench1);
+	}
 }
 
 void RigidBody::step(double h) {
@@ -230,30 +294,9 @@ void RigidBody::step(double h) {
 
 	// Initialize b vector
 
-	// Set spring forces
-	for (int i = 0; i < springs.size(); i++) {
-		auto b0 = bodies[springs[i]->i];
-		auto b1 = bodies[springs[i]->k];
-
-		auto n0 = b0->nodes[springs[i]->in];
-		auto n1 = b1->nodes[springs[i]->kn];
-
-		Vector3d d = (n0->x - n1->x).normalized();
-		double l = (n0->x - n1->x).norm();
-		double f = springs[i]->E * (l / springs[i]->L - 1.0);
-
-		Vector3d f0 = -f * d;
-		Vector3d f1 = -f0;
-
-		gamma.block<3, 3>(0, 0) = vec2crossmatrix(n0->x0).transpose();
-		VectorXd wrench0 = (b0->R * gamma).transpose() * f0;
-		gamma_k.block<3, 3>(0, 0) = vec2crossmatrix(n1->x0).transpose();
-		VectorXd wrench1 = (b1->R * gamma_k).transpose() * f1;
-
-		b0->setBodyForce(wrench0);
-		b1->setBodyForce(wrench1);
+	if (numSprings != 0) {
+		computeSpringForces();
 	}
-
 
 	for (int i = 0; i < numRB; i++) {
 		RHS.segment<6>(6 * i) = bodies[i]->computeForces(h);
@@ -322,7 +365,7 @@ void RigidBody::step(double h) {
 
 	bool success = program->solve();
 	sol = program->getPrimalSolution();
-	joint_forces = -GG.transpose() * program->getDualEquality()/h;
+	//joint_forces = -GG.transpose() * program->getDualEquality()/h;
 	
 	//vec_to_file(sol, "sol");
 
