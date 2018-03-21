@@ -15,6 +15,10 @@
 #include "Program.h"
 #include "RBState.h"
 #include "Spring.h"
+#include "WrapSphere.h"
+#include "WrapDoubleCylinder.h"
+#include "WrapCylinder.h"
+#include "Shape.h"
 
 #include <unsupported/Eigen/src/MatrixFunctions/MatrixExponential.h>
 
@@ -24,15 +28,19 @@ using namespace Eigen;
 typedef Eigen::Triplet<double> ETriplet;
 double inf = numeric_limits<double>::infinity();
 
+
+
 RigidBody::RigidBody() {
 	// change when model changes
-	this->numRB = 4;
-	this->numJoints = 1;
-	this->numSprings = 1;
-	this->numFixed = 2;
-	this->yfloor = -0.0;
-	this->isBoxBoxCol = true;
-	this->isFloorCol = true;
+	this->numRB = 3;
+	this->numJoints = 2;
+	this->numSprings = 0;
+	this->numCylinders = 1;
+	this->numFixed = 1;
+	this->yfloor = 0.0;
+	this->isBoxBoxCol = false;
+	this->isFloorCol = false;
+	
 
 	initConstant();
 	initAfterNumRB();
@@ -50,7 +58,7 @@ RigidBody::RigidBody() {
 	
 	// specify model parameters after this line ------------------
 
-	// Model 1:---------------------------------------------------
+	// Model 1: Test if every function is working
 	
 	/*this->numRB = 4;
 	this->numJoints = 1;
@@ -60,7 +68,7 @@ RigidBody::RigidBody() {
 	this->isBoxBoxCol = true;
 	this->isFloorCol = true;
 
-	*/
+	
 
 	init_v.segment<3>(3 * 1) << -10.0, 0.0, 0.0;
 	init_p << 0.0, 12.0, 0.0,
@@ -75,11 +83,46 @@ RigidBody::RigidBody() {
 								sqrt(2) / 2.0, 0, sqrt(2) / 2.0;
 	init_fixed_rb << 0, 3;
 	stiffness = 1e2;
-
+    */
 	//-------------------------------------------------------------
 	
 
+	// Model 2: Arms
+	
+	/*this->numRB = 3;
+	this->numJoints = 2;
+	this->numSprings = 0;
+	this->numFixed = 1;
+	this->yfloor = 0.0;
+	this->isBoxBoxCol = false;
+	this->isFloorCol = false;*/
+
+	init_v.segment<3>(3 * 2) << -5.0, 0.0, 0.0;
+	init_p << 0.0, 14.0, 0.0,
+		3.0, 11.0, 0.0,
+		3.0, 5.0, 0.0;
+	/*init_R.block<3, 3>(0, 0) << 0, -1, 0, 
+								1, 0, 0, 
+								0, 0, 1;*/
+	init_R.block<3, 3>(0, 0) << 0, -1, 0,
+								1, 0, 0,
+								0, 0, 1;
+	init_fixed_rb << 0; 
+	init_cyl_x << 1.0f, 7.2f, -0.2f;
+	init_cyl_P << 0.0f, 13.0f, 0.0f;
+	init_cyl_S << 2.0f, 4.0f, 0.0f;
+	//init_cyl_O << 1.0f, 7.2f, -0.2f;
+	init_cyl_O << -1.2f, 1.5f, -0.2f;
+	init_cyl_Z << 0.0f, 0.0f, -1.0f;
+	init_cyl_r << 0.4;
+	init_cyl_rb_id << 2;
+	//-------------------------------------------------------------
+
 	initRBs();
+
+	if (numCylinders != 0) {
+		initCylinder();
+	}
 
 	if (numSprings != 0) {
 		// init after initRBs
@@ -87,6 +130,28 @@ RigidBody::RigidBody() {
 	}
 
 	initBuffers();
+}
+
+void RigidBody::initCylinder() {
+	for (int i = 0; i < numCylinders; i++) {
+		auto cylinder = make_shared<Particle>();
+
+		cylinders.push_back(cylinder);
+		cylinder->r = init_cyl_r(i);
+		cylinder->x = init_cyl_x.segment<3>(3 * i);
+		cylinder->P = init_cyl_P.segment<3>(3 * i);
+		cylinder->S = init_cyl_S.segment<3>(3 * i);
+		cylinder->O = init_cyl_O.segment<3>(3 * i);
+		cylinder->Z = init_cyl_Z.segment<3>(3 * i);
+		cylinder->rb_id = init_cyl_rb_id(i);
+
+		Vector3f temp = cylinder->O;
+		Vector3d tem;
+		tem << double(temp(0)), double(temp(1)), double(temp(2));
+		cylinder->x0 = local2world(bodies[i]->E.inverse(), tem);
+		
+
+	}
 }
 
 void RigidBody::initRBs() {
@@ -188,6 +253,7 @@ void RigidBody::initAfterNumRB() {
 }
 
 void RigidBody::initShape() {
+	// init cubes
 	in.load_ply("rectcube");
 	tetrahedralize("pqz", &in, &out);
 	this->nVerts = out.numberofpoints;
@@ -196,6 +262,16 @@ void RigidBody::initShape() {
 	mass = nVerts * 1.0;
 	dimensions << 2 * abs(out.pointlist[0]), 2 * abs(out.pointlist[1]), 2 * abs(out.pointlist[2]);
 
+	
+	// init cylinders wrapper
+	wp.resize(3 * numCylinders, 21); // TODO
+	init_cyl_x.resize(numCylinders * 3);
+	init_cyl_P.resize(numCylinders * 3);
+	init_cyl_S.resize(numCylinders * 3);
+	init_cyl_Z.resize(numCylinders * 3);
+	init_cyl_O.resize(numCylinders * 3);
+	init_cyl_r.resize(numCylinders);
+	init_cyl_rb_id.resize(numCylinders);
 }
 
 void RigidBody::initJoints() {
@@ -551,6 +627,30 @@ void RigidBody::step(double h) {
 		colList.clear();
 	}
 	updatePosNor();
+
+	// update Cylinders
+
+	for (int i = 0; i < numCylinders; i++) {
+		int id = cylinders[i]->rb_id;
+		//Vector3d temp = cylinders[i]->x0;
+		Vector3f temp = cylinders[i]->O;
+		Vector3d tem;
+		tem << double(temp(0)), double(temp(1)), double(temp(2));
+		//Vector3d Ot = local2world(bodies[id]->E, tem );
+		Vector3d Ot = local2world(bodies[id]->E, tem);
+		Vector3f O;
+		O << float(Ot(0)), float(Ot(1)), float(Ot(2));
+
+		/*WrapCylinder wc(Eigen::Vector3f(0.0f,13.0f, 0.0f),
+			Eigen::Vector3f(2.0f, 4.0f, 0.0f),
+			Eigen::Vector3f(1.0f, 7.2f, -0.2f),
+			Eigen::Vector3f(0.0f, 0.0f, -1.0f),
+			0.4);*/
+		WrapCylinder wc(cylinders[i]->P, cylinders[i]->S, O, cylinders[i]->Z, cylinders[i]->r);
+		wc.compute();
+		wp.block<3, 21>(3*i, 0) = wc.getPoints(20);
+
+	}
 }
 
 void RigidBody::init() {
@@ -666,7 +766,7 @@ void RigidBody::draw(shared_ptr<MatrixStack> MV, const shared_ptr<Program> p, co
 	}
 
 	glColor3f(0.0, 0.0, 0.0); // black
-	glLineWidth(5);
+	glLineWidth(3);
 	for (int i = 0; i < springs.size(); i++) {
 		Vector3d p0 = bodies[springs[i]->i]->nodes[springs[i]->in]->x;
 		Vector3d p1 = bodies[springs[i]->k]->nodes[springs[i]->kn]->x;
@@ -675,7 +775,18 @@ void RigidBody::draw(shared_ptr<MatrixStack> MV, const shared_ptr<Program> p, co
 		glVertex3f(float(p1(0)), float(p1(1)), float(p1(2)));
 		glEnd();
 	}
+	glBegin(GL_LINE_STRIP);
+	glVertex3f(2.0f, 4.0f, 0.0f);
+	
+	for (int i = 0; i < 21; i++) {
+		Vector3f p = wp.block<3, 1>(0, i);
+		
+		glVertex3f(p(0), p(1), p(2));
 
+		
+	}
+	glVertex3f(0.0f, 13.0f, 0.0f);
+	glEnd();
 	MV->popMatrix();
 	p2->unbind();
 }

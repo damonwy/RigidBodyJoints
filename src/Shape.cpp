@@ -4,10 +4,13 @@
 #include "GLSL.h"
 #include "Program.h"
 
+
 #define TINYOBJLOADER_IMPLEMENTATION
 #include "tiny_obj_loader.h"
 
 using namespace std;
+using namespace Eigen;
+
 
 Shape::Shape() :
 	posBufID(0),
@@ -133,4 +136,38 @@ void Shape::draw(const shared_ptr<Program> prog) const
 	glBindBuffer(GL_ARRAY_BUFFER, 0);
 	
 	GLSL::checkError(GET_FILE_LINE);
+}
+
+
+void Shape::resize(double ratio) {
+	for (int i = 0; i < posBuf.size(); i++) {
+		posBuf[i] = posBuf[i] * ratio;
+	}
+}
+
+void Shape::rotate(Matrix3d R) {
+	Vector3d p;
+
+	for (int i = 0; i < (int)(posBuf.size() / 3); i++) {
+		p << posBuf[3 * i + 0],
+			posBuf[3 * i + 1],
+			posBuf[3 * i + 2];
+		p = R * p;
+		for (int t = 0; t < 3; t++) {
+			posBuf[3 * i + t] = p(t);
+		}
+	}
+
+
+	for (int i = 0; i < (int)(norBuf.size() / 3); i++) {
+		p << norBuf[3 * i + 0],
+			norBuf[3 * i + 1],
+			norBuf[3 * i + 2];
+		p = R * p;
+		for (int t = 0; t < 3; t++) {
+			norBuf[3 * i + t] = p(t);
+		}
+	}
+
+
 }

@@ -38,11 +38,15 @@ private:
 	double t;
 	double h;
 	Eigen::Vector3d grav;
+
+	int numCylinders;
 	
 	//std::shared_ptr<Shape> sphereShape;
 	//std::shared_ptr<Cloth> cloth;
 	//std::vector< std::shared_ptr<Particle> > spheres;
 	std::shared_ptr<RigidBody> rigidbody;
+	std::shared_ptr<Shape> cylinderShape;
+	std::vector< std::shared_ptr<Particle> > cylinders;
 };
 
 #endif // RIGIDBODYJOINTS_SRC_SCENE_H_

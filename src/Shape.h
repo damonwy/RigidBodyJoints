@@ -5,6 +5,9 @@
 #include <string>
 #include <vector>
 #include <memory>
+#define EIGEN_DONT_ALIGN_STATICALLY
+#include <Eigen/Dense>
+#include <Eigen/Sparse>
 
 class Program;
 
@@ -23,6 +26,8 @@ public:
 	void loadMesh(const std::string &meshName);
 	void init();
 	void draw(const std::shared_ptr<Program> prog) const;
+	void resize(double ratio);
+	void rotate(Eigen::Matrix3d R);
 	
 private:
 	std::vector<float> posBuf;

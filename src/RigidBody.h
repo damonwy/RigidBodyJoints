@@ -31,7 +31,8 @@ public:
 	void initShape();
 	void initJoints();
 	void initSprings(double stiffness);
-	
+	void initCylinder();
+
 	void initRBs();
 	void initBuffers();
 	void updatePosNor();
@@ -68,6 +69,8 @@ public:
 	int numColBoxBox;
 	int numJoints;
 	int numSprings;
+	int numCylinders;
+
 	int numVars;
 	int numEqualities;
 	int numInequalities;
@@ -90,6 +93,14 @@ public:
 	Eigen::VectorXd init_w; // ................ angular velocity ......................
 	Eigen::VectorXd init_p; // ................ position ..............................
 	Eigen::MatrixXd init_R; // ................ rotation ..............................
+	Eigen::VectorXd init_cyl_x;
+	Eigen::VectorXf init_cyl_P;
+	Eigen::VectorXf init_cyl_S;
+	Eigen::VectorXf init_cyl_O;
+	Eigen::VectorXf init_cyl_Z;
+	Eigen::VectorXd init_cyl_r;
+	Eigen::VectorXd init_cyl_rb_id;
+
 
 	Eigen::VectorXd xl;
 	Eigen::VectorXd xu;
@@ -103,7 +114,9 @@ public:
 	Eigen::VectorXd conveck;
 	Eigen::MatrixXd gamma;
 	Eigen::MatrixXd gamma_k;
-	Eigen::VectorXd joint_forces;
+	//Eigen::VectorXd joint_forces;
+	Eigen::MatrixXf wp;
+	
 
 	int numRB;
 	Eigen::MatrixXd Eij;
@@ -111,6 +124,8 @@ public:
 	std::vector < std::shared_ptr<RBState> > bodies;
 	std::vector < std::shared_ptr<Contacts> > contacts;
 	std::vector < std::shared_ptr<Spring> > springs;
+	std::vector< std::shared_ptr<Particle> > cylinders;
+	
 
 	std::vector < int > colList;
 

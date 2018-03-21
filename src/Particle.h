@@ -33,7 +33,14 @@ public:
 	Eigen::Vector3d xi; // local position
 	Eigen::Vector3d xo; 
 	Eigen::Vector3d v;  // velocity
+
+	Eigen::Vector3f P;
+	Eigen::Vector3f S;
+	Eigen::Vector3f O;
+	Eigen::Vector3f Z;
 	
+	int rb_id;
+
 	bool fixed;
 	
 private:
