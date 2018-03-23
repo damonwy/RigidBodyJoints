@@ -18,6 +18,7 @@
 #include "WrapSphere.h"
 #include "WrapDoubleCylinder.h"
 #include "WrapCylinder.h"
+
 #include "Shape.h"
 #include "Cylinder.h"
 
@@ -101,17 +102,14 @@ RigidBody::RigidBody() {
 	init_p << 0.0, 14.0, 0.0,
 		3.0, 11.0, 0.0,
 		3.0, 5.0, 0.0;
-	/*init_R.block<3, 3>(0, 0) << 0, -1, 0, 
-								1, 0, 0, 
-								0, 0, 1;*/
+	
 	init_R.block<3, 3>(0, 0) << 0, -1, 0,
 								1, 0, 0,
 								0, 0, 1;
 	init_fixed_rb << 0; 
-	init_cyl_x << 1.0, 7.2, -0.2;
 	init_cyl_P << 0.0, 0.0, 0.0;
-	init_cyl_S << 0.0, 0.0, 0.0;
-	init_cyl_O << -1.2, 1.5, -0.2;
+	init_cyl_S << -1.0, 0.0, 0.0;
+	init_cyl_O << -1.5, 1.5, -0.2;
 	init_cyl_Z << 0.0, 0.0, -1.0;
 	init_cyl_r << 0.4;
 	init_cyl_rb_id << 2;
@@ -145,15 +143,13 @@ void RigidBody::initCylinder() {
 		Ss.push_back(S);
 		S->x0 = init_cyl_S.segment<3>(3 * i);
 		S->rb_id = init_cyl_S_rb(i);
-		S->x = local2world(bodies[S->rb_id]->E,S->x0);
-		cout << bodies[S->rb_id]->E << endl;
-		cout << S->x << endl;
+		S->x = local2world(bodies[S->rb_id]->E, S->x0);
 
 		auto O = make_shared<Particle>();
 		Os.push_back(O);
-		O->x = init_cyl_O.segment<3>(3 * i);
+		O->x0 = init_cyl_O.segment<3>(3 * i);
 		O->rb_id = init_cyl_rb_id(i);
-		O->x0 = local2world(bodies[O->rb_id]->E.inverse(), O->x);
+		O->x = local2world(bodies[O->rb_id]->E, O->x0);
 		
 		auto cylinder = make_shared<Cylinder>(P, S, O);
 		cylinders.push_back(cylinder);
@@ -198,6 +194,7 @@ void RigidBody::initBuffers() {
 	eleBuf.resize(nTriFaces * 3 * numRB);
 
 	updatePosNor();
+	updateWrapCylinders();
 
 	for (int i = 0; i < numRB * nTriFaces; i++) {
 		for (int j = 0; j < 3; j++) {
@@ -225,9 +222,6 @@ void RigidBody::initConstant() {
 
 void RigidBody::initAfterNumRB() {
 	numVars = numRB * 6;
-	//joint_forces.resize(numVars); // no need for now... might be useful later
-	//joint_forces.setZero();
-
 	// Initialize QP b vector and solution vector
 
 	RHS.resize(numVars);
@@ -270,11 +264,8 @@ void RigidBody::initShape() {
 	this->nEdges = out.numberofedges;
 	mass = nVerts * 1.0;
 	dimensions << 2 * abs(out.pointlist[0]), 2 * abs(out.pointlist[1]), 2 * abs(out.pointlist[2]);
-
 	
 	// init cylinders wrapper
-	wp.resize(3 * numCylinders, numWrapPoints + 1); 
-	init_cyl_x.resize(numCylinders * 3);
 	init_cyl_P.resize(numCylinders * 3);
 	init_cyl_S.resize(numCylinders * 3);
 	init_cyl_Z.resize(numCylinders * 3);
@@ -283,6 +274,9 @@ void RigidBody::initShape() {
 	init_cyl_rb_id.resize(numCylinders);
 	init_cyl_P_rb.resize(numCylinders);
 	init_cyl_S_rb.resize(numCylinders);
+	wp.resize(3*numCylinders, numWrapPoints+1);
+	wp_stat.resize(numCylinders);
+	wp_length.resize(numCylinders);
 
 }
 
@@ -348,6 +342,24 @@ void RigidBody::computeSpringForces() {
 		b1->setBodyForce(wrench1);
 	}
 }
+
+void RigidBody::computeWrapCylinderForces() {
+	for (int i = 0; i < numCylinders; i++) {
+		auto c = cylinders[i];
+		double f = c->stiffness * (c->l / c->L);
+		Vector3d fp = -f * c->pdir;
+		Vector3d fs = -f * c->sdir;
+
+		gamma.block<3, 3>(0, 0) = vec2crossmatrix(c->P->x0).transpose();
+		VectorXd wrench0 = (bodies[c->P->rb_id]->R * gamma).transpose() * fp;
+		gamma_k.block<3, 3>(0, 0) = vec2crossmatrix(c->S->x0).transpose();
+		VectorXd wrench1 = (bodies[c->S->rb_id]->R * gamma_k).transpose() * fs;
+
+		bodies[c->P->rb_id]->setBodyForce(wrench0);
+		bodies[c->S->rb_id]->setBodyForce(wrench1);
+	}
+}
+
 
 void RigidBody::setJointConstraints(int &currentrow) {
 	MatrixXd Gi, Gk;
@@ -434,7 +446,6 @@ void RigidBody::detectBoxBoxCol() {
 	}
 
 	numInequalities += numColBoxBox;
-
 }
 
 void RigidBody::setInequality() {
@@ -487,6 +498,10 @@ void RigidBody::setObjective(double h) {
 		computeSpringForces();
 	}
 
+	if (numCylinders != 0) {
+		computeWrapCylinderForces();
+	}
+
 	for (int i = 0; i < numRB; i++) {
 		RHS.segment<6>(6 * i) = bodies[i]->computeForces(h);
 	}
@@ -494,7 +509,7 @@ void RigidBody::setObjective(double h) {
 }
 
 void RigidBody::step(double h) {
-
+	
 	shared_ptr<QuadProgMosek> program_ = make_shared <QuadProgMosek>();
 	program = program_;
 	program_->setParamInt(MSK_IPAR_OPTIMIZER, MSK_OPTIMIZER_INTPNT);
@@ -587,7 +602,6 @@ void RigidBody::step(double h) {
 				Vector3d xi = local2world(bodies[cts->i]->Etemp.inverse(), x0);
 				Vector3d xk = local2world(bodies[cts->k]->Etemp.inverse(), x0);
 
-
 				gamma.block(0, 0, 3, 3) = vec2crossmatrix(xi).transpose();
 
 				Matrix3d Ri = bodies[cts->i]->Etemp.block<3, 3>(0, 0);
@@ -600,14 +614,12 @@ void RigidBody::step(double h) {
 				//conveck = cts->normal.transpose() * bodies[cts->k]->R * gamma_k;
 
 				conveck = cts->normal.transpose() * Rk * gamma_k;
-
 			
 				for (int t = 0; t < 6; t++) {
 					C_.push_back(ETriplet(currentrow, 6 * cts->i + t, convec(t)));
 					C_.push_back(ETriplet(currentrow, 6 * cts->k + t, -conveck(t)));
 				}
 				currentrow += 1;
-				
 			}
 		}
 
@@ -627,7 +639,6 @@ void RigidBody::step(double h) {
 		sol = program->getPrimalSolution();
 
 		//vec_to_file(sol, "sol");
-		//joint_forces = -GG.transpose() * program->getDualEquality() / h;
 
 		for (int i = 0; i < numRB; i++) {
 			bodies[i]->setAngularVelocity(sol.segment<3>(6 * i + 0));
@@ -638,21 +649,53 @@ void RigidBody::step(double h) {
 		C_.clear();
 		colList.clear();
 	}
+
 	updatePosNor();
+	updateWrapCylinders();
+	
+}
 
-	// update Cylinders
-
+void RigidBody::updateWrapCylinders() {
+	
 	for (int i = 0; i < numCylinders; i++) {
-		
-		cylinders[i]->O->x = local2world(bodies[cylinders[i]->O->rb_id]->E, cylinders[i]->O->x0);
-		cylinders[i]->P->x = local2world(bodies[cylinders[i]->P->rb_id]->E, cylinders[i]->P->x0);
-		cylinders[i]->S->x = local2world(bodies[cylinders[i]->S->rb_id]->E, cylinders[i]->S->x0);
+		auto c = cylinders[i];
 
-		WrapCylinder wc(cylinders[i]->P->x.cast <float>(), cylinders[i]->S->x.cast <float>(), cylinders[i]->O->x.cast <float>(), cylinders[i]->Z.cast <float>(), cylinders[i]->r);
+		c->O->x = local2world(bodies[c->O->rb_id]->E, c->O->x0);
+		c->P->x = local2world(bodies[c->P->rb_id]->E, c->P->x0);
+		c->S->x = local2world(bodies[c->S->rb_id]->E, c->S->x0);
+		WrapCylinder wc(c->P->x.cast <float>(), c->S->x.cast <float>(), c->O->x.cast <float>(), c->Z.cast <float>(),c->r);
 		wc.compute();
-		wp.block(3*i, 0, 3, numWrapPoints + 1) = wc.getPoints(numWrapPoints);
+		if (wc.getStatus() == wrap) {
+			wp.block(3 * i, 0, 3, numWrapPoints + 1) = wc.getPoints(numWrapPoints);
+			wp_stat(i) = 1;
+			wp_length(i) = double(wc.getLength());
+			Vector3d end = wp.block<3, 1>(3 * i, 0).cast <double>();
+			Vector3d start = wp.block<3, 1>(3 * i, numWrapPoints).cast <double>();
+			c->l = wp_length(i) + (end - c->S->x).norm() + (start - c->P->x).norm();
+
+			c->pdir = (c->P->x - start).normalized();
+			c->sdir = (c->S->x - end).normalized();
+
+			if (cylinders[i]->L < 0.0) {
+				cylinders[i]->L = cylinders[i]->l;
+			}
+		}
+		else {
+			wp.block(3 * i, 0, 3, numWrapPoints + 1).setZero();
+			wp_stat(i) = 0;
+			wp_length(i) = 0.0;
+			cylinders[i]->l = wp_length(i) + (cylinders[i]->S->x - cylinders[i]->P->x).norm();
+
+			c->pdir = (c->P->x - c->S->x).normalized();
+			c->sdir = -c->pdir;
+
+			if (cylinders[i]->L < 0.0) {
+				cylinders[i]->L = cylinders[i]->l;
+			}
+		}		
 	}
 }
+
 
 void RigidBody::init() {
 	glGenBuffers(1, &posBufID);
@@ -778,23 +821,27 @@ void RigidBody::draw(shared_ptr<MatrixStack> MV, const shared_ptr<Program> p, co
 	}
 
 	// Draw Wrapper
-	
 
 	for (int t = 0; t < numCylinders; t++) {
+		
 		glBegin(GL_LINE_STRIP);
 		Vector3f end = cylinders[t]->S->x.cast <float>();
+		glVertex3f(end(0), end(1), end(2));
+			
+		if (wp_stat(t) == 1) {
 
-		glVertex3f(end(0), end(0), end(0));
-		for (int i = 0; i < numWrapPoints+1; i++) {
-			Vector3f p = wp.block<3, 1>(0, i);
-			glVertex3f(p(0), p(1), p(2));
+			for (int i = 0; i < numWrapPoints + 1; i++) {
+				Vector3f p = wp.block<3, 1>(3*t, i);
+				glVertex3f(p(0), p(1), p(2));
+			}
 		}
+
+
 		Vector3f start = cylinders[t]->P->x.cast <float>();
 		glVertex3f(start(0), start(1), start(2));
 		glEnd();
 	}
 	
-
 	MV->popMatrix();
 	p2->unbind();
 }
@@ -838,17 +885,6 @@ Matrix3d RigidBody::vec2crossmatrix(Vector3d a) {
 }
 
 Vector3d RigidBody::local2world(MatrixXd E, Vector3d x) {
-	// homo coor
-	VectorXd xh;
-	xh.resize(4);
-	xh.segment<3>(0) = x;
-	xh(3) = 1.0;
-
-	Vector3d xw = (E * xh).segment<3>(0);
-	return xw;
-}
-
-Vector3d RigidBody::world2local(MatrixXd E, Vector3d x) {
 	// homo coor
 	VectorXd xh;
 	xh.resize(4);

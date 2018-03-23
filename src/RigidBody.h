@@ -20,6 +20,7 @@ struct Joint;
 struct Contacts;
 class Spring;
 class Cylinder;
+class WrapCylinder;
 
 typedef Eigen::Triplet<double> ETriplet;
 
@@ -37,8 +38,10 @@ public:
 	void initRBs();
 	void initBuffers();
 	void updatePosNor();
+	void updateWrapCylinders();
 
 	void computeSpringForces();
+	void computeWrapCylinderForces();
 	void setJointConstraints(int &currentrow);
 	void setFixedConstraints(int &currentrow);
 
@@ -53,25 +56,27 @@ public:
 	void step(double h);
 	std::shared_ptr<Spring> createSpring(int _i, int _k, int _in, int _kn, std::vector < std::shared_ptr<RBState> > bodies, double E);
 	Eigen::MatrixXd computeAdjoint(Eigen::MatrixXd E);
-	Eigen::Matrix3d vec2crossmatrix(Eigen::Vector3d a);	// repackage a vector into a cross-product matrix
+	Eigen::Matrix3d vec2crossmatrix(Eigen::Vector3d a);					// repackage a vector into a cross-product matrix
 	Eigen::Vector3d local2world(Eigen::MatrixXd E, Eigen::Vector3d x);	// compute the world position given a local position x on a rigid body
-	Eigen::Vector3d world2local(Eigen::MatrixXd E, Eigen::Vector3d x);
+
 	tetgenio in, out;
+
+	double stiffness;
+	double mass;
+	double yfloor;
 
 	int nVerts;
 	int nTriFaces;
 	int nEdges;
-	Eigen::VectorXi init_fixed_rb;
-	double stiffness;
-	double mass;
-	double yfloor;
+
+	int numRB;
 	int numFixed;
 	int numColFloor;
 	int numColBoxBox;
 	int numJoints;
 	int numSprings;
 	int numCylinders;
-	int numWrapPoints;  // 
+	int numWrapPoints;   
 
 	int numVars;
 	int numEqualities;
@@ -95,16 +100,15 @@ public:
 	Eigen::VectorXd init_w; // ................ angular velocity ......................
 	Eigen::VectorXd init_p; // ................ position ..............................
 	Eigen::MatrixXd init_R; // ................ rotation ..............................
-	Eigen::VectorXd init_cyl_x;
-	Eigen::VectorXd init_cyl_P;
-	Eigen::VectorXd init_cyl_S;
-	Eigen::VectorXd init_cyl_O;
-	Eigen::VectorXd init_cyl_Z;
-	Eigen::VectorXd init_cyl_r;
+	Eigen::VectorXi init_fixed_rb;
+	Eigen::VectorXd init_cyl_P; // in local frame
+	Eigen::VectorXd init_cyl_S; // ...
+	Eigen::VectorXd init_cyl_O; // ...
+	Eigen::VectorXd init_cyl_Z; 
+	Eigen::VectorXd init_cyl_r; 
 	Eigen::VectorXd init_cyl_rb_id;
 	Eigen::VectorXd init_cyl_P_rb;
 	Eigen::VectorXd init_cyl_S_rb;
-
 
 	Eigen::VectorXd xl;
 	Eigen::VectorXd xu;
@@ -118,22 +122,21 @@ public:
 	Eigen::VectorXd conveck;
 	Eigen::MatrixXd gamma;
 	Eigen::MatrixXd gamma_k;
-	//Eigen::VectorXd joint_forces;
 	Eigen::MatrixXf wp;
+	Eigen::VectorXi wp_stat;
+	Eigen::VectorXd wp_length;
 	
-
-	int numRB;
 	Eigen::MatrixXd Eij;
+
 	std::vector < std::shared_ptr<Joint> > joints;
 	std::vector < std::shared_ptr<RBState> > bodies;
 	std::vector < std::shared_ptr<Contacts> > contacts;
 	std::vector < std::shared_ptr<Spring> > springs;
-	std::vector< std::shared_ptr<Cylinder> > cylinders;
+	std::vector < std::shared_ptr<Cylinder> > cylinders;
 	std::vector < std::shared_ptr<Particle> > Ps;
 	std::vector < std::shared_ptr<Particle> > Ss;
 	std::vector < std::shared_ptr<Particle> > Os;
-
-	
+	//std::vector < std::unique_ptr<WrapCylinder> > wrapcylinders;
 
 	std::vector < int > colList;
 

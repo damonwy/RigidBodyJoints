@@ -22,11 +22,16 @@ public:
 	virtual ~Cylinder();
 
 	double r; // radius
-
+	double L; // initial length
+	double l; // current length
+	double stiffness;
 	std::shared_ptr<Particle> P;	// start point
 	std::shared_ptr<Particle> S;	// end point
 	std::shared_ptr<Particle> O;	// the origin 
 	Eigen::Vector3d Z;				// the z axis
+
+	Eigen::Vector3d pdir;			// the direction of p
+	Eigen::Vector3d sdir;			// the direction of s
 };
 
 #endif // RIGIDBODYJOINTS_SRC_CYLINDER_H_
