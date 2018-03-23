@@ -9,12 +9,12 @@
 #define EIGEN_DONT_ALIGN_STATICALLY
 #include <Eigen/Dense>
 
-//class Cloth;
 class Particle;
 class MatrixStack;
 class Program;
 class Shape;
 class RigidBody;
+class Cylinder;
 
 class Scene
 {
@@ -41,11 +41,9 @@ private:
 
 	int numCylinders;
 	
-	//std::shared_ptr<Shape> sphereShape;
-	//std::shared_ptr<Cloth> cloth;
-	//std::vector< std::shared_ptr<Particle> > spheres;
 	std::shared_ptr<RigidBody> rigidbody;
-	std::shared_ptr<Shape> cylinderShape;
+
+	std::vector< std::shared_ptr<Shape> > cylinderShapes;
 	std::vector< std::shared_ptr<Particle> > cylinders;
 };
 

@@ -19,6 +19,7 @@
 #include "WrapDoubleCylinder.h"
 #include "WrapCylinder.h"
 #include "Shape.h"
+#include "Cylinder.h"
 
 #include <unsupported/Eigen/src/MatrixFunctions/MatrixExponential.h>
 
@@ -29,18 +30,17 @@ typedef Eigen::Triplet<double> ETriplet;
 double inf = numeric_limits<double>::infinity();
 
 
-
 RigidBody::RigidBody() {
 	// change when model changes
 	this->numRB = 3;
 	this->numJoints = 2;
 	this->numSprings = 0;
 	this->numCylinders = 1;
+	this->numWrapPoints = 20;
 	this->numFixed = 1;
 	this->yfloor = 0.0;
 	this->isBoxBoxCol = false;
 	this->isFloorCol = false;
-	
 
 	initConstant();
 	initAfterNumRB();
@@ -108,14 +108,16 @@ RigidBody::RigidBody() {
 								1, 0, 0,
 								0, 0, 1;
 	init_fixed_rb << 0; 
-	init_cyl_x << 1.0f, 7.2f, -0.2f;
-	init_cyl_P << 0.0f, 13.0f, 0.0f;
-	init_cyl_S << 2.0f, 4.0f, 0.0f;
-	//init_cyl_O << 1.0f, 7.2f, -0.2f;
-	init_cyl_O << -1.2f, 1.5f, -0.2f;
-	init_cyl_Z << 0.0f, 0.0f, -1.0f;
+	init_cyl_x << 1.0, 7.2, -0.2;
+	init_cyl_P << 0.0, 0.0, 0.0;
+	init_cyl_S << 0.0, 0.0, 0.0;
+	init_cyl_O << -1.2, 1.5, -0.2;
+	init_cyl_Z << 0.0, 0.0, -1.0;
 	init_cyl_r << 0.4;
 	init_cyl_rb_id << 2;
+
+	init_cyl_P_rb << 0;
+	init_cyl_S_rb << 2;
 	//-------------------------------------------------------------
 
 	initRBs();
@@ -128,29 +130,36 @@ RigidBody::RigidBody() {
 		// init after initRBs
 		initSprings(stiffness);
 	}
-
 	initBuffers();
 }
 
 void RigidBody::initCylinder() {
 	for (int i = 0; i < numCylinders; i++) {
-		auto cylinder = make_shared<Particle>();
+		auto P = make_shared<Particle>();
+		Ps.push_back(P);
+		P->x0 = init_cyl_P.segment<3>(3 * i);
+		P->rb_id = init_cyl_P_rb(i);
+		P->x = local2world(bodies[P->rb_id]->E, P->x0);
 
+		auto S = make_shared<Particle>();
+		Ss.push_back(S);
+		S->x0 = init_cyl_S.segment<3>(3 * i);
+		S->rb_id = init_cyl_S_rb(i);
+		S->x = local2world(bodies[S->rb_id]->E,S->x0);
+		cout << bodies[S->rb_id]->E << endl;
+		cout << S->x << endl;
+
+		auto O = make_shared<Particle>();
+		Os.push_back(O);
+		O->x = init_cyl_O.segment<3>(3 * i);
+		O->rb_id = init_cyl_rb_id(i);
+		O->x0 = local2world(bodies[O->rb_id]->E.inverse(), O->x);
+		
+		auto cylinder = make_shared<Cylinder>(P, S, O);
 		cylinders.push_back(cylinder);
 		cylinder->r = init_cyl_r(i);
-		cylinder->x = init_cyl_x.segment<3>(3 * i);
-		cylinder->P = init_cyl_P.segment<3>(3 * i);
-		cylinder->S = init_cyl_S.segment<3>(3 * i);
-		cylinder->O = init_cyl_O.segment<3>(3 * i);
 		cylinder->Z = init_cyl_Z.segment<3>(3 * i);
-		cylinder->rb_id = init_cyl_rb_id(i);
-
-		Vector3f temp = cylinder->O;
-		Vector3d tem;
-		tem << double(temp(0)), double(temp(1)), double(temp(2));
-		cylinder->x0 = local2world(bodies[i]->E.inverse(), tem);
 		
-
 	}
 }
 
@@ -264,7 +273,7 @@ void RigidBody::initShape() {
 
 	
 	// init cylinders wrapper
-	wp.resize(3 * numCylinders, 21); // TODO
+	wp.resize(3 * numCylinders, numWrapPoints + 1); 
 	init_cyl_x.resize(numCylinders * 3);
 	init_cyl_P.resize(numCylinders * 3);
 	init_cyl_S.resize(numCylinders * 3);
@@ -272,6 +281,9 @@ void RigidBody::initShape() {
 	init_cyl_O.resize(numCylinders * 3);
 	init_cyl_r.resize(numCylinders);
 	init_cyl_rb_id.resize(numCylinders);
+	init_cyl_P_rb.resize(numCylinders);
+	init_cyl_S_rb.resize(numCylinders);
+
 }
 
 void RigidBody::initJoints() {
@@ -631,25 +643,14 @@ void RigidBody::step(double h) {
 	// update Cylinders
 
 	for (int i = 0; i < numCylinders; i++) {
-		int id = cylinders[i]->rb_id;
-		//Vector3d temp = cylinders[i]->x0;
-		Vector3f temp = cylinders[i]->O;
-		Vector3d tem;
-		tem << double(temp(0)), double(temp(1)), double(temp(2));
-		//Vector3d Ot = local2world(bodies[id]->E, tem );
-		Vector3d Ot = local2world(bodies[id]->E, tem);
-		Vector3f O;
-		O << float(Ot(0)), float(Ot(1)), float(Ot(2));
+		
+		cylinders[i]->O->x = local2world(bodies[cylinders[i]->O->rb_id]->E, cylinders[i]->O->x0);
+		cylinders[i]->P->x = local2world(bodies[cylinders[i]->P->rb_id]->E, cylinders[i]->P->x0);
+		cylinders[i]->S->x = local2world(bodies[cylinders[i]->S->rb_id]->E, cylinders[i]->S->x0);
 
-		/*WrapCylinder wc(Eigen::Vector3f(0.0f,13.0f, 0.0f),
-			Eigen::Vector3f(2.0f, 4.0f, 0.0f),
-			Eigen::Vector3f(1.0f, 7.2f, -0.2f),
-			Eigen::Vector3f(0.0f, 0.0f, -1.0f),
-			0.4);*/
-		WrapCylinder wc(cylinders[i]->P, cylinders[i]->S, O, cylinders[i]->Z, cylinders[i]->r);
+		WrapCylinder wc(cylinders[i]->P->x.cast <float>(), cylinders[i]->S->x.cast <float>(), cylinders[i]->O->x.cast <float>(), cylinders[i]->Z.cast <float>(), cylinders[i]->r);
 		wc.compute();
-		wp.block<3, 21>(3*i, 0) = wc.getPoints(20);
-
+		wp.block(3*i, 0, 3, numWrapPoints + 1) = wc.getPoints(numWrapPoints);
 	}
 }
 
@@ -775,18 +776,25 @@ void RigidBody::draw(shared_ptr<MatrixStack> MV, const shared_ptr<Program> p, co
 		glVertex3f(float(p1(0)), float(p1(1)), float(p1(2)));
 		glEnd();
 	}
-	glBegin(GL_LINE_STRIP);
-	glVertex3f(2.0f, 4.0f, 0.0f);
-	
-	for (int i = 0; i < 21; i++) {
-		Vector3f p = wp.block<3, 1>(0, i);
-		
-		glVertex3f(p(0), p(1), p(2));
 
-		
+	// Draw Wrapper
+	
+
+	for (int t = 0; t < numCylinders; t++) {
+		glBegin(GL_LINE_STRIP);
+		Vector3f end = cylinders[t]->S->x.cast <float>();
+
+		glVertex3f(end(0), end(0), end(0));
+		for (int i = 0; i < numWrapPoints+1; i++) {
+			Vector3f p = wp.block<3, 1>(0, i);
+			glVertex3f(p(0), p(1), p(2));
+		}
+		Vector3f start = cylinders[t]->P->x.cast <float>();
+		glVertex3f(start(0), start(1), start(2));
+		glEnd();
 	}
-	glVertex3f(0.0f, 13.0f, 0.0f);
-	glEnd();
+	
+
 	MV->popMatrix();
 	p2->unbind();
 }

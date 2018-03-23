@@ -19,6 +19,7 @@ struct RBState;
 struct Joint;
 struct Contacts;
 class Spring;
+class Cylinder;
 
 typedef Eigen::Triplet<double> ETriplet;
 
@@ -70,6 +71,7 @@ public:
 	int numJoints;
 	int numSprings;
 	int numCylinders;
+	int numWrapPoints;  // 
 
 	int numVars;
 	int numEqualities;
@@ -94,12 +96,14 @@ public:
 	Eigen::VectorXd init_p; // ................ position ..............................
 	Eigen::MatrixXd init_R; // ................ rotation ..............................
 	Eigen::VectorXd init_cyl_x;
-	Eigen::VectorXf init_cyl_P;
-	Eigen::VectorXf init_cyl_S;
-	Eigen::VectorXf init_cyl_O;
-	Eigen::VectorXf init_cyl_Z;
+	Eigen::VectorXd init_cyl_P;
+	Eigen::VectorXd init_cyl_S;
+	Eigen::VectorXd init_cyl_O;
+	Eigen::VectorXd init_cyl_Z;
 	Eigen::VectorXd init_cyl_r;
 	Eigen::VectorXd init_cyl_rb_id;
+	Eigen::VectorXd init_cyl_P_rb;
+	Eigen::VectorXd init_cyl_S_rb;
 
 
 	Eigen::VectorXd xl;
@@ -124,7 +128,11 @@ public:
 	std::vector < std::shared_ptr<RBState> > bodies;
 	std::vector < std::shared_ptr<Contacts> > contacts;
 	std::vector < std::shared_ptr<Spring> > springs;
-	std::vector< std::shared_ptr<Particle> > cylinders;
+	std::vector< std::shared_ptr<Cylinder> > cylinders;
+	std::vector < std::shared_ptr<Particle> > Ps;
+	std::vector < std::shared_ptr<Particle> > Ss;
+	std::vector < std::shared_ptr<Particle> > Os;
+
 	
 
 	std::vector < int > colList;

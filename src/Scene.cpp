@@ -6,6 +6,7 @@
 #include "Shape.h"
 #include "Program.h"
 #include "RigidBody.h"
+#include "Cylinder.h"
 
 using namespace std;
 using namespace Eigen;
@@ -30,35 +31,37 @@ void Scene::load(const string &RESOURCE_DIR)
 	
 	rigidbody = make_shared<RigidBody>();
 	numCylinders = rigidbody->numCylinders;
-
-	cylinderShape = make_shared<Shape>();
-	cylinderShape->loadMesh(RESOURCE_DIR + "cylinder.obj");
-	cylinderShape->resize(4.0);
+	
 
 	Matrix3d R;
 	R << 0, 0, 1, 1, 0, 0, 0, 1, 0;
-	cylinderShape->rotate(R);
-
-	VectorXd init_cyl_x;
-	init_cyl_x.resize(numCylinders * 3);
-	init_cyl_x.setZero();
-	init_cyl_x.segment<3>(0) = Vector3d(1.0, 7.2, -0.2);
 
 	for (int i = 0; i < numCylinders; i++) {
-		auto cylinder = make_shared<Particle>(cylinderShape);
+
+		auto cylinderShape = make_shared<Shape>();
+		cylinderShapes.push_back(cylinderShape);
+
+		cylinderShape->loadMesh(RESOURCE_DIR + "cylinder.obj");
+		//cylinderShape->resize(1.0);
+		cylinderShape->resize(rigidbody->cylinders[i]->r/0.4);
+		cylinderShape->rotate(R);
+		
+
+		auto cylinder = make_shared<Particle>(cylinderShapes[i]);
 
 		cylinders.push_back(cylinder);
-		cylinder->r = 0.1;
-		cylinder->x = init_cyl_x.segment<3>(3 * i);
+		cylinder->r = rigidbody->cylinders[i]->r;
+		cylinder->x = rigidbody->cylinders[i]->O->x;
 	}
-	
-
 }
 
 void Scene::init()
 {
 	rigidbody->init();
-	cylinderShape->init();
+	for (int i = 0; i < numCylinders; i++) {
+		cylinderShapes[i]->init();
+	}
+	
 }
 
 void Scene::tare()
@@ -84,11 +87,12 @@ void Scene::step()
 	rigidbody->step(h);
 
 	// move the cylinders
-	//if (!cylinders.empty()) {
-	//	auto c = cylinders.front();
-	//	c->x = // TODO
-	//}
-	//TODO
+	if (!cylinders.empty()) {
+		for (int i = 0; i < numCylinders; i++) {
+			cylinders[i]->x = rigidbody->cylinders[i]->O->x;
+		}
+	}
+
 }
 
 void Scene::draw(shared_ptr<MatrixStack> MV, const shared_ptr<Program> prog, const shared_ptr<Program> prog2, shared_ptr<MatrixStack> P) const
