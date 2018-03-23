@@ -7,6 +7,7 @@
 #include "Program.h"
 #include "RigidBody.h"
 #include "Cylinder.h"
+#include "DoubleCylinder.h"
 
 using namespace std;
 using namespace Eigen;
@@ -31,7 +32,7 @@ void Scene::load(const string &RESOURCE_DIR)
 	
 	rigidbody = make_shared<RigidBody>();
 	numCylinders = rigidbody->numCylinders;
-	
+	numDoubleCylinders = rigidbody->numDoubleCylinders;
 
 	Matrix3d R;
 	R << 0, 0, 1, 1, 0, 0, 0, 1, 0;
@@ -53,6 +54,31 @@ void Scene::load(const string &RESOURCE_DIR)
 		cylinder->r = rigidbody->cylinders[i]->r;
 		cylinder->x = rigidbody->cylinders[i]->O->x;
 	}
+
+
+	for (int i = 0; i < numDoubleCylinders; i++) {
+
+		auto dcShape0 = make_shared<Shape>();
+		auto dcShape1 = make_shared<Shape>();
+		dcShapes.push_back(dcShape0);
+		dcShapes.push_back(dcShape1);
+
+		dcShape0->loadMesh(RESOURCE_DIR + "cylinder.obj");
+		//cylinderShape->resize(1.0);
+		dcShape0->resize(rigidbody->doublecylinders[i]->Ur / 0.4);
+		dcShape0->rotate(R);
+		dcShape1->loadMesh(RESOURCE_DIR + "cylinder.obj");
+		dcShape1->resize(rigidbody->doublecylinders[i]->Vr / 0.4);
+		dcShape1->rotate(R);
+		auto dc0 = make_shared<Particle>(dcShapes[i + 0]);
+		auto dc1 = make_shared<Particle>(dcShapes[i + 1]);
+		doublecylinders.push_back(dc0);
+		doublecylinders.push_back(dc1);
+		dc0->r = rigidbody->doublecylinders[i]->Ur;
+		dc0->x = rigidbody->doublecylinders[i]->U->x;
+		dc1->r = rigidbody->doublecylinders[i]->Vr;
+		dc1->x = rigidbody->doublecylinders[i]->V->x;
+	}
 }
 
 void Scene::init()
@@ -60,6 +86,9 @@ void Scene::init()
 	rigidbody->init();
 	for (int i = 0; i < numCylinders; i++) {
 		cylinderShapes[i]->init();
+	}
+	for (int i = 0; i < 2*numDoubleCylinders; i++) {
+		dcShapes[i]->init();
 	}
 	
 }
@@ -70,6 +99,10 @@ void Scene::tare()
 	for (int i = 0; i < numCylinders; i++) {
 		cylinders[i]->tare();
 	}
+
+	for (int i = 0; i < 2 * numCylinders; i++) {
+		doublecylinders[i]->tare();
+	}
 }
 
 void Scene::reset()
@@ -77,6 +110,10 @@ void Scene::reset()
 	t = 0.0;
 	for (int i = 0; i < numCylinders; i++) {
 		cylinders[i]->reset();
+	}
+
+	for (int i = 0; i < 2*numCylinders; i++) {
+		doublecylinders[i]->reset();
 	}
 }
 
@@ -92,7 +129,12 @@ void Scene::step()
 			cylinders[i]->x = rigidbody->cylinders[i]->O->x;
 		}
 	}
-
+	if (!doublecylinders.empty()) {
+		for (int i = 0; i < numDoubleCylinders; i++) {
+			doublecylinders[i + 0]->x = rigidbody->doublecylinders[i]->U->x;
+			doublecylinders[i + 1]->x = rigidbody->doublecylinders[i]->V->x;
+		}
+	}
 }
 
 void Scene::draw(shared_ptr<MatrixStack> MV, const shared_ptr<Program> prog, const shared_ptr<Program> prog2, shared_ptr<MatrixStack> P) const
@@ -102,6 +144,11 @@ void Scene::draw(shared_ptr<MatrixStack> MV, const shared_ptr<Program> prog, con
 	for (int i = 0; i < numCylinders; i++) {
 		
 		cylinders[i]->draw(MV, prog);
+	}
+
+	for (int i = 0; i < 2*numDoubleCylinders; i++) {
+
+		doublecylinders[i]->draw(MV, prog);
 	}
 
 	rigidbody->draw(MV, prog, prog2, P);

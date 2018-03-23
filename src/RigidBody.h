@@ -20,7 +20,9 @@ struct Joint;
 struct Contacts;
 class Spring;
 class Cylinder;
+class DoubleCylinder;
 class WrapCylinder;
+class WrapDoubleCylinder;
 
 typedef Eigen::Triplet<double> ETriplet;
 
@@ -29,30 +31,42 @@ public:
 	RigidBody();
 	void init();
 	void initAfterNumRB();
+	void initAfterNumCylinders();
+	void initAfterNumDoubleCylinders();
 	void initConstant();
-	void initShape();
+	void initRBShape();
 	void initJoints();
 	void initSprings(double stiffness);
 	void initCylinder();
+	void initDoubleCylinder();
 
 	void initRBs();
 	void initBuffers();
 	void updatePosNor();
 	void updateWrapCylinders();
+	void updateDoubleWrapCylinders();
 
 	void computeSpringForces();
 	void computeWrapCylinderForces();
+	void computeWrapDoubleCylinderForces();
 	void setJointConstraints(int &currentrow);
 	void setFixedConstraints(int &currentrow);
 
 	void setEquality();
-	void setInequality();
+	void setInequality(double h);
 	void setObjective(double h);
 
 	void detectFloorCol();
 	void detectBoxBoxCol();
 
+	void drawRBnodes()const;
+	void drawSprings()const;
+	void drawWrapCylinders()const;
+	void drawDoubleWrapCylinders()const;
+	void drawBoxBoxCol()const;
 	void draw(std::shared_ptr<MatrixStack> MV, const std::shared_ptr<Program> p, const std::shared_ptr<Program> p2, std::shared_ptr<MatrixStack> P)const;
+	
+
 	void step(double h);
 	std::shared_ptr<Spring> createSpring(int _i, int _k, int _in, int _kn, std::vector < std::shared_ptr<RBState> > bodies, double E);
 	Eigen::MatrixXd computeAdjoint(Eigen::MatrixXd E);
@@ -76,6 +90,7 @@ public:
 	int numJoints;
 	int numSprings;
 	int numCylinders;
+	int numDoubleCylinders;
 	int numWrapPoints;   
 
 	int numVars;
@@ -106,9 +121,24 @@ public:
 	Eigen::VectorXd init_cyl_O; // ...
 	Eigen::VectorXd init_cyl_Z; 
 	Eigen::VectorXd init_cyl_r; 
-	Eigen::VectorXd init_cyl_rb_id;
-	Eigen::VectorXd init_cyl_P_rb;
-	Eigen::VectorXd init_cyl_S_rb;
+	Eigen::VectorXi init_cyl_O_rb;
+	Eigen::VectorXi init_cyl_P_rb;
+	Eigen::VectorXi init_cyl_S_rb;
+
+	Eigen::VectorXd init_dcyl_P; // in local frame
+	Eigen::VectorXd init_dcyl_S; // ...
+	Eigen::VectorXi init_dcyl_P_rb;
+	Eigen::VectorXi init_dcyl_S_rb;
+
+	Eigen::VectorXd init_dcyl_U; 
+	Eigen::VectorXd init_dcyl_Uz;
+	Eigen::VectorXd init_dcyl_Ur;
+	Eigen::VectorXi init_dcyl_U_rb;
+
+	Eigen::VectorXd init_dcyl_Vz;
+	Eigen::VectorXd init_dcyl_Vr;
+	Eigen::VectorXd init_dcyl_V;
+	Eigen::VectorXi init_dcyl_V_rb;
 
 	Eigen::VectorXd xl;
 	Eigen::VectorXd xu;
@@ -122,9 +152,14 @@ public:
 	Eigen::VectorXd conveck;
 	Eigen::MatrixXd gamma;
 	Eigen::MatrixXd gamma_k;
-	Eigen::MatrixXf wp;
-	Eigen::VectorXi wp_stat;
-	Eigen::VectorXd wp_length;
+
+	Eigen::MatrixXf wpc;
+	Eigen::VectorXi wpc_stat;
+	Eigen::VectorXd wpc_length;
+
+	Eigen::MatrixXf wpdc;
+	Eigen::VectorXi wpdc_stat;
+	Eigen::VectorXd wpdc_length;
 	
 	Eigen::MatrixXd Eij;
 
@@ -133,10 +168,16 @@ public:
 	std::vector < std::shared_ptr<Contacts> > contacts;
 	std::vector < std::shared_ptr<Spring> > springs;
 	std::vector < std::shared_ptr<Cylinder> > cylinders;
+	std::vector < std::shared_ptr<DoubleCylinder> > doublecylinders;
+
 	std::vector < std::shared_ptr<Particle> > Ps;
 	std::vector < std::shared_ptr<Particle> > Ss;
 	std::vector < std::shared_ptr<Particle> > Os;
-	//std::vector < std::unique_ptr<WrapCylinder> > wrapcylinders;
+
+	std::vector < std::shared_ptr<Particle> > dPs;
+	std::vector < std::shared_ptr<Particle> > dSs;
+	std::vector < std::shared_ptr<Particle> > dUs;
+	std::vector < std::shared_ptr<Particle> > dVs;
 
 	std::vector < int > colList;
 

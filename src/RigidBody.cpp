@@ -5,6 +5,7 @@
 #define GLM_FORCE_RADIANS
 #include <glm/glm.hpp>
 #include <glm/gtc/type_ptr.hpp>
+#include <math.h>       /* isnan, sqrt */
 
 #include "GLSL.h"
 #include "Joint.h"
@@ -21,6 +22,7 @@
 
 #include "Shape.h"
 #include "Cylinder.h"
+#include "DoubleCylinder.h"
 
 #include <unsupported/Eigen/src/MatrixFunctions/MatrixExponential.h>
 
@@ -37,6 +39,7 @@ RigidBody::RigidBody() {
 	this->numJoints = 2;
 	this->numSprings = 0;
 	this->numCylinders = 1;
+	this->numDoubleCylinders = 1;
 	this->numWrapPoints = 10;
 	this->numFixed = 1;
 	this->yfloor = 0.0;
@@ -44,8 +47,11 @@ RigidBody::RigidBody() {
 	this->isFloorCol = false;
 
 	initConstant();
-	initAfterNumRB();
-	initShape();
+	if (numRB != 0) {
+		initAfterNumRB();
+	}
+	
+	initRBShape();
 
 	if (numFixed != 0) {
 		init_fixed_rb.resize(numFixed);
@@ -55,6 +61,14 @@ RigidBody::RigidBody() {
 
 	if (numJoints != 0) {
 		initJoints();
+	}
+
+	if (numCylinders != 0) {
+		initAfterNumCylinders();
+	}
+
+	if (numDoubleCylinders != 0) {
+		initAfterNumDoubleCylinders();
 	}
 	
 	// specify model parameters after this line ------------------
@@ -98,7 +112,7 @@ RigidBody::RigidBody() {
 	this->isBoxBoxCol = false;
 	this->isFloorCol = false;*/
 
-	init_v.segment<3>(3 * 2) << -5.0, 0.0, 0.0;
+	init_v.segment<3>(3 * 2) << -10.0, 0.0, 0.0;
 	init_p << 0.0, 14.0, 0.0,
 		3.0, 11.0, 0.0,
 		3.0, 5.0, 0.0;
@@ -112,16 +126,37 @@ RigidBody::RigidBody() {
 	init_cyl_O << -1.5, 1.5, -0.2;
 	init_cyl_Z << 0.0, 0.0, -1.0;
 	init_cyl_r << 0.4;
-	init_cyl_rb_id << 2;
+	init_cyl_O_rb << 2;
 
 	init_cyl_P_rb << 0;
 	init_cyl_S_rb << 2;
+
+	init_dcyl_P << 1.0, 3.0, 0.0;
+	init_dcyl_P_rb << 0;
+	init_dcyl_S << 1.0, -3.0, 0.0;
+	init_dcyl_S_rb << 1;
+
+	init_dcyl_U << 1.5, -1.0, -0.2;
+	init_dcyl_U_rb << 0;
+	init_dcyl_Uz << 0.0, 0.0, -1.0;
+	init_dcyl_Ur << 0.4;
+
+	init_dcyl_V << 1.5, 1.5, -0.2;
+	init_dcyl_V_rb << 1;
+	init_dcyl_Vz << 0.0, 0.0, 1.0;
+	init_dcyl_Vr << 0.4;
+
+
 	//-------------------------------------------------------------
 
 	initRBs();
 
 	if (numCylinders != 0) {
 		initCylinder();
+	}
+
+	if (numDoubleCylinders != 0) {
+		initDoubleCylinder();
 	}
 
 	if (numSprings != 0) {
@@ -148,14 +183,49 @@ void RigidBody::initCylinder() {
 		auto O = make_shared<Particle>();
 		Os.push_back(O);
 		O->x0 = init_cyl_O.segment<3>(3 * i);
-		O->rb_id = init_cyl_rb_id(i);
+		O->rb_id = init_cyl_O_rb(i);
 		O->x = local2world(bodies[O->rb_id]->E, O->x0);
 		
 		auto cylinder = make_shared<Cylinder>(P, S, O);
 		cylinders.push_back(cylinder);
 		cylinder->r = init_cyl_r(i);
 		cylinder->Z = init_cyl_Z.segment<3>(3 * i);
-		
+	}
+}
+
+void RigidBody::initDoubleCylinder() {
+	for (int i = 0; i < numDoubleCylinders; i++) {
+		auto P = make_shared<Particle>();
+		dPs.push_back(P);
+		P->x0 = init_dcyl_P.segment<3>(3 * i);
+		P->rb_id = init_dcyl_P_rb(i);
+		P->x = local2world(bodies[P->rb_id]->E, P->x0);
+
+		auto S = make_shared<Particle>();
+		dSs.push_back(S);
+		S->x0 = init_dcyl_S.segment<3>(3 * i);
+		S->rb_id = init_dcyl_S_rb(i);
+		S->x = local2world(bodies[S->rb_id]->E, S->x0);
+
+		auto U = make_shared<Particle>();
+		dUs.push_back(U);
+		U->x0 = init_dcyl_U.segment<3>(3 * i);
+		U->rb_id = init_dcyl_U_rb(i);
+		U->x = local2world(bodies[U->rb_id]->E, U->x0);
+
+		auto V = make_shared<Particle>();
+		dVs.push_back(V);
+		V->x0 = init_dcyl_V.segment<3>(3 * i);
+		V->rb_id = init_dcyl_V_rb(i);
+		V->x = local2world(bodies[V->rb_id]->E, V->x0);
+
+		auto doublecylinder = make_shared<DoubleCylinder>(P, S, U, V);
+
+		doublecylinders.push_back(doublecylinder);
+		doublecylinder->Ur = init_dcyl_Ur(i);
+		doublecylinder->Zu = init_dcyl_Uz.segment<3>(3 * i);
+		doublecylinder->Vr = init_dcyl_Vr(i);
+		doublecylinder->Zv = init_dcyl_Vz.segment<3>(3 * i);
 	}
 }
 
@@ -182,27 +252,6 @@ void RigidBody::initRBs() {
 	}
 }
 
-void RigidBody::initBuffers() {
-	// Build buffers
-	posBuf.clear();
-	norBuf.clear();
-	texBuf.clear();
-	eleBuf.clear();
-
-	posBuf.resize(nTriFaces * 9 * numRB);
-	norBuf.resize(nTriFaces * 9 * numRB);
-	eleBuf.resize(nTriFaces * 3 * numRB);
-
-	updatePosNor();
-	updateWrapCylinders();
-
-	for (int i = 0; i < numRB * nTriFaces; i++) {
-		for (int j = 0; j < 3; j++) {
-			eleBuf[3 * i + j] = 3 * i + j;
-		}
-	}
-}
-
 void RigidBody::initConstant() {
 	this->I.setIdentity();
 	numEqualities = 0;
@@ -218,6 +267,25 @@ void RigidBody::initConstant() {
 	convec.resize(6);
 	conveck.resize(6);
 
+}
+
+void RigidBody::init() {
+	glGenBuffers(1, &posBufID);
+	glBindBuffer(GL_ARRAY_BUFFER, posBufID);
+	glBufferData(GL_ARRAY_BUFFER, posBuf.size() * sizeof(float), &posBuf[0], GL_DYNAMIC_DRAW);
+
+	glGenBuffers(1, &norBufID);
+	glBindBuffer(GL_ARRAY_BUFFER, norBufID);
+	glBufferData(GL_ARRAY_BUFFER, norBuf.size() * sizeof(float), &norBuf[0], GL_DYNAMIC_DRAW);
+
+	glGenBuffers(1, &eleBufID);
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, eleBufID);
+	glBufferData(GL_ELEMENT_ARRAY_BUFFER, eleBuf.size() * sizeof(unsigned int), &eleBuf[0], GL_STATIC_DRAW);
+
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+
+	assert(glGetError() == GL_NO_ERROR);
 }
 
 void RigidBody::initAfterNumRB() {
@@ -254,7 +322,47 @@ void RigidBody::initAfterNumRB() {
 
 }
 
-void RigidBody::initShape() {
+void RigidBody::initAfterNumCylinders() {
+
+	// init cylinders wrapper
+	init_cyl_P.resize(numCylinders * 3);
+	init_cyl_S.resize(numCylinders * 3);
+	init_cyl_Z.resize(numCylinders * 3);
+	init_cyl_O.resize(numCylinders * 3);
+	init_cyl_r.resize(numCylinders);
+	init_cyl_O_rb.resize(numCylinders);
+	init_cyl_P_rb.resize(numCylinders);
+	init_cyl_S_rb.resize(numCylinders);
+	wpc.resize(3 * numCylinders, numWrapPoints + 1);
+	wpc_stat.resize(numCylinders);
+	wpc_length.resize(numCylinders);
+}
+
+void RigidBody::initAfterNumDoubleCylinders() {
+	// init doublecylinders wrapper
+	init_dcyl_P.resize(numDoubleCylinders * 3);
+	init_dcyl_P_rb.resize(numDoubleCylinders);
+
+	init_dcyl_S.resize(numDoubleCylinders * 3);
+	init_dcyl_S_rb.resize(numDoubleCylinders);
+
+	init_dcyl_Uz.resize(numDoubleCylinders * 3);
+	init_dcyl_U.resize(numDoubleCylinders * 3);
+	init_dcyl_Ur.resize(numDoubleCylinders);
+	init_dcyl_U_rb.resize(numDoubleCylinders);
+
+	init_dcyl_Vz.resize(numDoubleCylinders * 3);
+	init_dcyl_V.resize(numDoubleCylinders * 3);
+	init_dcyl_Vr.resize(numDoubleCylinders);
+	init_dcyl_V_rb.resize(numDoubleCylinders);
+
+
+	wpdc.resize(3 * numDoubleCylinders, 3 * numWrapPoints + 1);
+	wpdc_stat.resize(numDoubleCylinders);
+	wpdc_length.resize(numDoubleCylinders);
+}
+
+void RigidBody::initRBShape() {
 	// init cubes
 	in.load_ply("rectcube");
 	tetrahedralize("pqz", &in, &out);
@@ -263,20 +371,6 @@ void RigidBody::initShape() {
 	this->nEdges = out.numberofedges;
 	mass = nVerts * 1.0;
 	dimensions << 2 * abs(out.pointlist[0]), 2 * abs(out.pointlist[1]), 2 * abs(out.pointlist[2]);
-	
-	// init cylinders wrapper
-	init_cyl_P.resize(numCylinders * 3);
-	init_cyl_S.resize(numCylinders * 3);
-	init_cyl_Z.resize(numCylinders * 3);
-	init_cyl_O.resize(numCylinders * 3);
-	init_cyl_r.resize(numCylinders);
-	init_cyl_rb_id.resize(numCylinders);
-	init_cyl_P_rb.resize(numCylinders);
-	init_cyl_S_rb.resize(numCylinders);
-	wp.resize(3*numCylinders, numWrapPoints+1);
-	wp_stat.resize(numCylinders);
-	wp_length.resize(numCylinders);
-
 }
 
 void RigidBody::initJoints() {
@@ -303,6 +397,28 @@ void RigidBody::initJoints() {
 
 void RigidBody::initSprings(double stiffness) {
 	springs.push_back(createSpring(1, 3, 0, 3, bodies, stiffness));
+}
+
+void RigidBody::initBuffers() {
+	// Build buffers
+	posBuf.clear();
+	norBuf.clear();
+	texBuf.clear();
+	eleBuf.clear();
+
+	posBuf.resize(nTriFaces * 9 * numRB);
+	norBuf.resize(nTriFaces * 9 * numRB);
+	eleBuf.resize(nTriFaces * 3 * numRB);
+
+	updatePosNor();
+	updateWrapCylinders();
+	updateDoubleWrapCylinders();
+
+	for (int i = 0; i < numRB * nTriFaces; i++) {
+		for (int j = 0; j < 3; j++) {
+			eleBuf[3 * i + j] = 3 * i + j;
+		}
+	}
 }
 
 MatrixXd RigidBody::computeAdjoint(MatrixXd E) {
@@ -359,6 +475,26 @@ void RigidBody::computeWrapCylinderForces() {
 
 		bodies[c->P->rb_id]->setBodyForce(wrench0);
 		bodies[c->S->rb_id]->setBodyForce(wrench1);
+	}
+}
+
+void RigidBody::computeWrapDoubleCylinderForces() {
+	for (int i = 0; i < numDoubleCylinders; i++) {
+		auto dc = doublecylinders[i];
+		double f = dc->stiffness * (dc->l / dc->L);
+		Vector3d fp = -f * dc->pdir;
+
+		dc->fp = fp;
+		Vector3d fs = -f * dc->sdir;
+		dc->fs = fs;
+
+		gamma.block<3, 3>(0, 0) = vec2crossmatrix(dc->P->x0).transpose();
+		VectorXd wrench0 = (bodies[dc->P->rb_id]->R * gamma).transpose() * fp;
+		gamma_k.block<3, 3>(0, 0) = vec2crossmatrix(dc->S->x0).transpose();
+		VectorXd wrench1 = (bodies[dc->S->rb_id]->R * gamma_k).transpose() * fs;
+
+		bodies[dc->P->rb_id]->setBodyForce(wrench0);
+		bodies[dc->S->rb_id]->setBodyForce(wrench1);
 	}
 }
 
@@ -446,12 +582,106 @@ void RigidBody::detectBoxBoxCol() {
 			}
 		}
 	}
-
 	numInequalities += numColBoxBox;
 }
 
-void RigidBody::setInequality() {
+void RigidBody::setInequality(double h) {
+	// Add Inequalities constraints
+	if (numInequalities == 0) {
+		for (int i = 0; i < numRB; i++) {
+			bodies[i]->updateTransformationMatrix(h);
+		}
+	}
+	else {
+		VectorXd inequalvec;
 
+		// Initialize inequality vector
+		inequalvec.resize(numInequalities);
+		inequalvec.setZero();
+		C.resize(numInequalities, numVars);
+		program->setNumberOfInequalities(numInequalities);
+
+		int currentrow = 0;
+
+		// Floor collisions
+		for (int i = 0; i < numColFloor; i++) {
+
+			int ib = colList[2 * i + 0]; // the index of rigid body 
+			int in = colList[2 * i + 1]; // the index of node 
+
+			gamma.block<3, 3>(0, 0) = vec2crossmatrix(bodies[ib]->nodes[in]->x0).transpose();
+			// R and p were not updated yet... were still the values before the collsion 
+
+			//Matrix3d Rtemp = bodies[ib]->Etemp.block<3, 3>(0, 0);
+			//convec = ynormal.transpose() * Rtemp * gamma;
+
+			convec = ynormal.transpose() * bodies[ib]->R * gamma; // 1x6 vector that should be in the constraint matrix
+
+			for (int t = 0; t < 6; t++) {
+				C_.push_back(ETriplet(i, 6 * ib + t, -convec(t)));
+
+			}
+		}
+
+		currentrow += numColFloor;
+
+		// Push back constraints with rigid bodies
+		for (int i = 0; i < contacts.size(); i++) {
+			auto cts = contacts[i];
+
+			for (int j = 0; j < cts->count; j++) {
+				// Change the world position to local position
+				Vector3d x0 = cts->positions[j];			// collision point in rb i in world frame
+				Vector3d xi = local2world(bodies[cts->i]->Etemp.inverse(), x0);
+				Vector3d xk = local2world(bodies[cts->k]->Etemp.inverse(), x0);
+
+				gamma.block(0, 0, 3, 3) = vec2crossmatrix(xi).transpose();
+
+				Matrix3d Ri = bodies[cts->i]->Etemp.block<3, 3>(0, 0);
+				//convec = cts->normal.transpose() * bodies[cts->i]->R * gamma;
+
+				convec = cts->normal.transpose() * Ri * gamma;
+				Matrix3d Rk = bodies[cts->k]->Etemp.block<3, 3>(0, 0);
+
+				gamma_k.block<3, 3>(0, 0) = vec2crossmatrix(xk).transpose();
+				//conveck = cts->normal.transpose() * bodies[cts->k]->R * gamma_k;
+
+				conveck = cts->normal.transpose() * Rk * gamma_k;
+
+				for (int t = 0; t < 6; t++) {
+					C_.push_back(ETriplet(currentrow, 6 * cts->i + t, convec(t)));
+					C_.push_back(ETriplet(currentrow, 6 * cts->k + t, -conveck(t)));
+				}
+				currentrow += 1;
+			}
+		}
+
+		C.setFromTriplets(C_.begin(), C_.end());
+
+		program->setInequalityMatrix(C);
+		program->setInequalityVector(inequalvec);
+
+		//sparse_to_file_as_dense(C, "C");
+		//sparse_to_file_as_dense(GG, "GG");
+
+		// Initialize equality vector
+		equalvec.resize(numEqualities);
+		equalvec.setZero();
+
+		bool success = program->solve();
+		sol = program->getPrimalSolution();
+
+		//vec_to_file(sol, "sol");
+
+		for (int i = 0; i < numRB; i++) {
+			bodies[i]->setAngularVelocity(sol.segment<3>(6 * i + 0));
+			bodies[i]->setLinearVelocity(sol.segment<3>(6 * i + 3));
+			bodies[i]->updateTransformationMatrix(h);
+		}
+
+		C_.clear();
+		colList.clear();
+	}
 }
 
 void RigidBody::setEquality() {
@@ -501,7 +731,11 @@ void RigidBody::setObjective(double h) {
 	}
 
 	if (numCylinders != 0) {
-		computeWrapCylinderForces();
+		//computeWrapCylinderForces();
+	}
+
+	if (numDoubleCylinders != 0) {
+		//computeWrapDoubleCylinderForces();
 	}
 
 	for (int i = 0; i < numRB; i++) {
@@ -555,105 +789,10 @@ void RigidBody::step(double h) {
 		detectBoxBoxCol();
 	}
 
-	// Add Inequalities constraints
-	if (numInequalities == 0) {
-		for (int i = 0; i < numRB; i++) {
-			bodies[i]->updateTransformationMatrix(h);
-		}
-	}
-	else {
-		VectorXd inequalvec;
-
-		// Initialize inequality vector
-		inequalvec.resize(numInequalities);
-		inequalvec.setZero();
-		C.resize(numInequalities, numVars);
-		program->setNumberOfInequalities(numInequalities);
-
-		int currentrow = 0;
-
-		// Floor collisions
-		for (int i = 0; i < numColFloor; i++) {
-
-			int ib = colList[2 * i + 0]; // the index of rigid body 
-			int in = colList[2 * i + 1]; // the index of node 
-
-			gamma.block<3, 3>(0, 0) = vec2crossmatrix(bodies[ib]->nodes[in]->x0).transpose();
-			// R and p were not updated yet... were still the values before the collsion 
-
-			//Matrix3d Rtemp = bodies[ib]->Etemp.block<3, 3>(0, 0);
-			//convec = ynormal.transpose() * Rtemp * gamma;
-
-			convec = ynormal.transpose() * bodies[ib]->R * gamma; // 1x6 vector that should be in the constraint matrix
-
-			for (int t = 0; t < 6; t++) {
-				C_.push_back(ETriplet(i, 6 * ib + t, -convec(t)));
-
-			}
-		}
-
-		currentrow += numColFloor;
-		
-		// Push back constraints with rigid bodies
-		for (int i = 0; i < contacts.size(); i++) {
-			auto cts = contacts[i];
-			
-			for (int j = 0; j < cts->count; j++) {
-				// Change the world position to local position
-				Vector3d x0 = cts->positions[j];			// collision point in rb i in world frame
-				Vector3d xi = local2world(bodies[cts->i]->Etemp.inverse(), x0);
-				Vector3d xk = local2world(bodies[cts->k]->Etemp.inverse(), x0);
-
-				gamma.block(0, 0, 3, 3) = vec2crossmatrix(xi).transpose();
-
-				Matrix3d Ri = bodies[cts->i]->Etemp.block<3, 3>(0, 0);
-				//convec = cts->normal.transpose() * bodies[cts->i]->R * gamma;
-				
-				convec = cts->normal.transpose() * Ri * gamma;
-				Matrix3d Rk = bodies[cts->k]->Etemp.block<3, 3>(0, 0);
-
-				gamma_k.block<3, 3>(0, 0) = vec2crossmatrix(xk).transpose();
-				//conveck = cts->normal.transpose() * bodies[cts->k]->R * gamma_k;
-
-				conveck = cts->normal.transpose() * Rk * gamma_k;
-			
-				for (int t = 0; t < 6; t++) {
-					C_.push_back(ETriplet(currentrow, 6 * cts->i + t, convec(t)));
-					C_.push_back(ETriplet(currentrow, 6 * cts->k + t, -conveck(t)));
-				}
-				currentrow += 1;
-			}
-		}
-
-		C.setFromTriplets(C_.begin(), C_.end());
-
-		program->setInequalityMatrix(C);
-		program->setInequalityVector(inequalvec);
-
-		//sparse_to_file_as_dense(C, "C");
-		//sparse_to_file_as_dense(GG, "GG");
-
-		// Initialize equality vector
-		equalvec.resize(numEqualities);
-		equalvec.setZero();
-
-		bool success = program->solve();
-		sol = program->getPrimalSolution();
-
-		//vec_to_file(sol, "sol");
-
-		for (int i = 0; i < numRB; i++) {
-			bodies[i]->setAngularVelocity(sol.segment<3>(6 * i + 0));
-			bodies[i]->setLinearVelocity(sol.segment<3>(6 * i + 3));
-			bodies[i]->updateTransformationMatrix(h);
-		}
-
-		C_.clear();
-		colList.clear();
-	}
-
+	setInequality(h);
 	updatePosNor();
 	updateWrapCylinders();
+	updateDoubleWrapCylinders();
 	
 }
 
@@ -665,18 +804,32 @@ void RigidBody::updateWrapCylinders() {
 		c->O->x = local2world(bodies[c->O->rb_id]->E, c->O->x0);
 		c->P->x = local2world(bodies[c->P->rb_id]->E, c->P->x0);
 		c->S->x = local2world(bodies[c->S->rb_id]->E, c->S->x0);
+
 		WrapCylinder wc(c->P->x.cast <float>(), c->S->x.cast <float>(), c->O->x.cast <float>(), c->Z.cast <float>(),c->r);
 		wc.compute();
+
 		if (wc.getStatus() == wrap) {
-			cout << wc.getLength() << endl;
-			cout << i << endl;
-			cout << wc.getPoints(numWrapPoints) << endl;
-			wp.block(3 * i, 0, 3, numWrapPoints + 1) = wc.getPoints(numWrapPoints);
-			wp_stat(i) = 1;
-			wp_length(i) = double(wc.getLength());
-			Vector3d end = wp.block<3, 1>(3 * i, 0).cast <double>();
-			Vector3d start = wp.block<3, 1>(3 * i, numWrapPoints).cast <double>();
-			c->l = wp_length(i) + (end - c->S->x).norm() + (start - c->P->x).norm();
+			
+			wpc.block(3 * i, 0, 3, numWrapPoints + 1) = wc.getPoints(numWrapPoints);
+			wpc_stat(i) = 1;
+			wpc_length(i) = double(wc.getLength());
+			cout << wpc_length(i) << endl;
+			Vector3d end = wpc.block<3, 1>(3 * i, 0).cast <double>();
+
+			Vector3d start;
+			for (int j = 0; j < numWrapPoints + 1; j++) {
+				if (isnan(wpc(3 * i, j))) {
+					start = wpc.block<3, 1>(3 * i, j - 1).cast <double>();
+					break;
+				}
+				else {
+					start = wpc.block<3, 1>(3 * i, j).cast <double>();
+				}
+			}
+			cout << start << endl;
+			cout << end << endl;
+			cout << wpc.block(3 * i, 0, 3, numWrapPoints + 1);
+			c->l = wpc_length(i) + (end - c->S->x).norm() + (start - c->P->x).norm();
 
 			c->pdir = (c->P->x - start).normalized();
 			c->sdir = (c->S->x - end).normalized();
@@ -686,14 +839,16 @@ void RigidBody::updateWrapCylinders() {
 			}
 		}
 		else {
-			wp.block(3 * i, 0, 3, numWrapPoints + 1).setZero();
-			wp_stat(i) = 0;
-			wp_length(i) = 0.0;
-			cylinders[i]->l = wp_length(i) + (cylinders[i]->S->x - cylinders[i]->P->x).norm();
+			wpc.block(3 * i, 0, 3, numWrapPoints + 1).setZero();
+			wpc_stat(i) = 0;
+			wpc_length(i) = 0.0;
+
+			cylinders[i]->l = wpc_length(i) + (cylinders[i]->S->x - cylinders[i]->P->x).norm();
 
 			c->pdir = (c->P->x - c->S->x).normalized();
 			c->sdir = -c->pdir;
 
+			// also init L if it's the first time
 			if (cylinders[i]->L < 0.0) {
 				cylinders[i]->L = cylinders[i]->l;
 			}
@@ -701,24 +856,254 @@ void RigidBody::updateWrapCylinders() {
 	}
 }
 
+void RigidBody::updateDoubleWrapCylinders() {
+	for (int i = 0; i < numDoubleCylinders; i++) {
+		auto dc = doublecylinders[i];
 
-void RigidBody::init() {
-	glGenBuffers(1, &posBufID);
-	glBindBuffer(GL_ARRAY_BUFFER, posBufID);
-	glBufferData(GL_ARRAY_BUFFER, posBuf.size() * sizeof(float), &posBuf[0], GL_DYNAMIC_DRAW);
+		dc->U->x = local2world(bodies[dc->U->rb_id]->E, dc->U->x0);
+		dc->V->x = local2world(bodies[dc->V->rb_id]->E, dc->V->x0);
+		dc->P->x = local2world(bodies[dc->P->rb_id]->E, dc->P->x0);
+		dc->S->x = local2world(bodies[dc->S->rb_id]->E, dc->S->x0);
 
-	glGenBuffers(1, &norBufID);
-	glBindBuffer(GL_ARRAY_BUFFER, norBufID);
-	glBufferData(GL_ARRAY_BUFFER, norBuf.size() * sizeof(float), &norBuf[0], GL_DYNAMIC_DRAW);
+		WrapDoubleCylinder wdc(dc->P->x.cast <float>(), dc->S->x.cast <float>(), dc->U->x.cast <float>(), dc->Zu.cast <float>(), dc->Ur, dc->U->x.cast <float>(), dc->Zu.cast <float>(), dc->Vr);
+		wdc.compute();
+		
+		if (wdc.getStatus() == wrap) {
+			
+			wpdc.block(3 * i, 0, 3, 3 * numWrapPoints + 1) = wdc.getPoints(numWrapPoints);
+			wpdc_stat(i) = 1;
+			wpdc_length(i) = double(wdc.getLength());
 
-	glGenBuffers(1, &eleBufID);
-	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, eleBufID);
-	glBufferData(GL_ELEMENT_ARRAY_BUFFER, eleBuf.size() * sizeof(unsigned int), &eleBuf[0], GL_STATIC_DRAW);
+			Vector3d end = wpdc.block<3, 1>(3 * i, 0).cast <double>();
+			
+			Vector3d start;
+			
+			for (int j = 0; j < 3 * numWrapPoints + 1; j++) {
+				if (isnan(wpdc(3 * i, j))) {
+					start = wpdc.block<3, 1>(3 * i, j-1).cast <double>();
+					break;
+				}
+				else {
+					start = wpdc.block<3, 1>(3 * i, j).cast <double>();
+				}
+			}
+			
+			dc->l = wpdc_length(i) + (end - dc->S->x).norm() + (start - dc->P->x).norm();
 
-	glBindBuffer(GL_ARRAY_BUFFER, 0);
-	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+			dc->pdir = (dc->P->x - start).normalized();
+			dc->sdir = (dc->S->x - end).normalized();
 
-	assert(glGetError() == GL_NO_ERROR);
+			if (doublecylinders[i]->L < 0.0) {
+				doublecylinders[i]->L = doublecylinders[i]->l;
+			}
+		}
+		else {
+
+			wpdc.block(3 * i, 0, 3, 3 * numWrapPoints + 1).setZero();
+			wpdc_stat(i) = 0;
+			wpdc_length(i) = 0.0;
+
+			doublecylinders[i]->l = wpdc_length(i) + (doublecylinders[i]->S->x - doublecylinders[i]->P->x).norm();
+
+			dc->pdir = (dc->P->x - dc->S->x).normalized();
+			dc->sdir = -dc->pdir;
+
+			// also init L if it's the first time
+			if (doublecylinders[i]->L < 0.0) {
+				doublecylinders[i]->L = doublecylinders[i]->l;
+			}
+		}
+	}
+
+}
+
+void RigidBody::updatePosNor() {
+	// update 
+	for (int i = 0; i < numRB; i++) {
+		bodies[i]->updatePosition();
+	}
+
+	for (int i = 0; i < numRB; i++) {
+		for (int iface = 0; iface < nTriFaces; iface++) {
+			Vector3d p1 = bodies[i]->nodes[out.trifacelist[3 * iface + 0]]->x;
+			Vector3d p2 = bodies[i]->nodes[out.trifacelist[3 * iface + 1]]->x;
+			Vector3d p3 = bodies[i]->nodes[out.trifacelist[3 * iface + 2]]->x;
+
+			//Position
+			Vector3d e1 = p2 - p1;
+			Vector3d e2 = p3 - p1;
+			Vector3d normal = e1.cross(e2);
+			normal.normalize();
+
+			for (int idx = 0; idx < 3; idx++) {
+				posBuf[nTriFaces * 9 * i + 9 * iface + 0 + idx] = p1(idx);
+				posBuf[nTriFaces * 9 * i + 9 * iface + 3 + idx] = p2(idx);
+				posBuf[nTriFaces * 9 * i + 9 * iface + 6 + idx] = p3(idx);
+				norBuf[nTriFaces * 9 * i + 9 * iface + 0 + idx] = normal(idx);
+				norBuf[nTriFaces * 9 * i + 9 * iface + 3 + idx] = normal(idx);
+				norBuf[nTriFaces * 9 * i + 9 * iface + 6 + idx] = normal(idx);
+			}
+		}
+	}
+}
+
+void RigidBody::drawRBnodes()const {
+	glPointSize(5);
+	glBegin(GL_POINTS);
+	for (int i = 0; i < nVerts; i++) {
+		switch (i) {
+		case 0:
+			glColor3f(1.0, 0.0, 0.0); // red
+			break;
+		case 1:
+			glColor3f(1.0, 1.0, 0.0); // yellow
+			break;
+		case 2:
+			glColor3f(0.0, 0.0, 1.0);  // blue
+			break;
+		case 3:
+			glColor3f(0.0, 1.0, 0.0); // lime
+			break;
+		case 4:
+			glColor3f(128.0 / 255.0, 0.0, 0.0);// maroon
+			break;
+		case 5:
+			glColor3f(128.0 / 255.0, (128.0) / 255.0, 0.0);// olive
+			break;
+		case 6:
+			glColor3f(0.0, 0.0, 128.0 / 255.0); // navy
+			break;
+		case 7:
+			glColor3f(0.0, 128.0 / 255.0, 0.0); // green
+			break;
+		}
+		for (int j = 0; j < numRB; j++) {
+			glVertex3f(float(bodies[j]->nodes[i]->x(0)), float(bodies[j]->nodes[i]->x(1)), float(bodies[j]->nodes[i]->x(2)));
+		}
+	}
+	glEnd();
+}
+
+void RigidBody::drawSprings()const {
+	glColor3f(0.0, 0.0, 0.0); // black
+	glLineWidth(3);
+	for (int i = 0; i < springs.size(); i++) {
+		Vector3d p0 = bodies[springs[i]->i]->nodes[springs[i]->in]->x;
+		Vector3d p1 = bodies[springs[i]->k]->nodes[springs[i]->kn]->x;
+		glBegin(GL_LINES);
+		glVertex3f(float(p0(0)), float(p0(1)), float(p0(2)));
+		glVertex3f(float(p1(0)), float(p1(1)), float(p1(2)));
+		glEnd();
+	}
+}
+
+void RigidBody::drawWrapCylinders()const {
+	for (int t = 0; t < numCylinders; t++) {
+		auto c = cylinders[t];
+		// Draw Wrapper
+		glColor3f(0.0, 0.0, 0.0); // black
+		glBegin(GL_LINE_STRIP);
+		Vector3f end = c->S->x.cast <float>();
+		glVertex3f(end(0), end(1), end(2));
+
+		if (wpc_stat(t) == 1) {
+
+			for (int i = 0; i < numWrapPoints + 1; i++) {
+				if (isnan(wpc(3 * t, i))) {	
+					break;
+				}
+				else {
+					Vector3f p = wpc.block<3, 1>(3 * t, i);
+					glVertex3f(p(0), p(1), p(2));
+				}
+			}
+		}
+
+		Vector3f start = c->P->x.cast <float>();
+		glVertex3f(start(0), start(1), start(2));
+		glEnd();
+
+		// Draw Wrapper Forces
+		glColor3f(1.0, 1.0, 0.0); // yellow
+		glBegin(GL_LINES);
+		Vector3d e = c->fp + c->P->x;
+		Vector3d f = c->fs + c->S->x;
+		glVertex3f(float(c->P->x(0)), float(c->P->x(1)), float(c->P->x(2)));
+		glVertex3f(float(e(0)), float(e(1)), float(e(2)));
+
+		glVertex3f(float(c->S->x(0)), float(c->S->x(1)), float(c->S->x(2)));
+		glVertex3f(float(f(0)), float(f(1)), float(f(2)));
+		glEnd();
+
+	}
+}
+
+void RigidBody::drawDoubleWrapCylinders()const {
+
+
+	for (int t = 0; t < numDoubleCylinders; t++) {
+		auto dc = doublecylinders[t];
+		Vector3f end = dc->S->x.cast <float>();
+		Vector3f start = dc->P->x.cast <float>();
+		
+		// Draw Double Wrapper Points
+		glColor3f(0.0, 0.0, 0.0);
+		glPointSize(5);
+		glBegin(GL_POINTS);
+		glVertex3f(end(0), end(1), end(2));	
+		glVertex3f(start(0), start(1), start(2));
+		glEnd();
+
+		// Draw Double Wrapper
+		glColor3f(0.0, 0.0, 0.0); // black
+		glBegin(GL_LINE_STRIP);
+		glVertex3f(end(0), end(1), end(2));
+
+		if (wpdc_stat(t) == 1) {
+
+			for (int i = 0; i < 3 * numWrapPoints + 1; i++) {
+				Vector3f p = wpdc.block<3, 1>(3 * t, i);
+				glVertex3f(p(0), p(1), p(2));
+			}
+		}
+
+		glVertex3f(start(0), start(1), start(2));
+		glEnd();
+
+		// Draw Wrapper Forces
+		glColor3f(1.0, 1.0, 0.0); // yellow
+		glBegin(GL_LINES);
+		Vector3d e = dc->fp + dc->P->x;
+		Vector3d f = dc->fs + dc->S->x;
+		glVertex3f(float(dc->P->x(0)), float(dc->P->x(1)), float(dc->P->x(2)));
+		glVertex3f(float(e(0)), float(e(1)), float(e(2)));
+
+		glVertex3f(float(dc->S->x(0)), float(dc->S->x(1)), float(dc->S->x(2)));
+		glVertex3f(float(f(0)), float(f(1)), float(f(2)));
+		glEnd();
+
+	}
+}
+
+void RigidBody::drawBoxBoxCol()const {
+	glColor3f(1.0, 1.0, 0.0); // yellow
+	if (numColBoxBox != 0) {
+		glLineWidth(4);
+		for (int i = 0; i < contacts.size(); i++) {
+			for (int j = 0; j < contacts[i]->count; j++) {
+				Vector3d p1 = contacts[i]->positions[j];
+				Vector3d p2 = 1.5 * contacts[i]->normal + contacts[i]->positions[j];
+				glBegin(GL_LINES);
+				glVertex3f(float(p1(0)), float(p1(1)), float(p1(2)));
+				glVertex3f(float(p2(0)), float(p2(1)), float(p2(2)));
+				glEnd();
+				glPointSize(10);
+				glBegin(GL_POINTS);
+				glVertex3f(float(p1(0)), float(p1(1)), float(p1(2)));
+				glEnd();
+			}
+		}
+	}
 }
 
 void RigidBody::draw(shared_ptr<MatrixStack> MV, const shared_ptr<Program> p, const shared_ptr<Program> p2, shared_ptr<MatrixStack> P)const {
@@ -759,141 +1144,14 @@ void RigidBody::draw(shared_ptr<MatrixStack> MV, const shared_ptr<Program> p, co
 	glUniformMatrix4fv(p2->getUniform("MV"), 1, GL_FALSE, glm::value_ptr(MV->topMatrix()));
 	MV->pushMatrix();
 	glUniformMatrix4fv(p->getUniform("MV"), 1, GL_FALSE, glm::value_ptr(MV->topMatrix()));
-	glPointSize(5);
-
-	glBegin(GL_POINTS);
-	for (int i = 0; i < nVerts; i++) {
-		switch (i) {
-		case 0:
-			glColor3f(1.0, 0.0, 0.0); // red
-			break;
-		case 1:
-			glColor3f(1.0, 1.0, 0.0); // yellow
-			break;
-		case 2:
-			glColor3f(0.0, 0.0, 1.0);  // blue
-			break;
-		case 3:
-			glColor3f(0.0, 1.0, 0.0); // lime
-			break;
-		case 4:
-			glColor3f(128.0/ 255.0, 0.0, 0.0);// maroon
-			break;
-		case 5:
-			glColor3f(128.0 / 255.0, (128.0) / 255.0, 0.0);// olive
-			break;
-		case 6:
-			glColor3f(0.0, 0.0, 128.0 / 255.0); // navy
-			break;
-		case 7:
-			glColor3f(0.0, 128.0 / 255.0 ,0.0); // green
-			break;
-		}
-		for (int j = 0; j < numRB; j++) {
-			glVertex3f(float(bodies[j]->nodes[i]->x(0)), float(bodies[j]->nodes[i]->x(1)), float(bodies[j]->nodes[i]->x(2)));
-		}
-	}
-	glEnd();
-
-	glColor3f(1.0, 1.0, 0.0); // yellow
-	if (numColBoxBox != 0) {
-		glLineWidth(4);
-		for (int i = 0; i < contacts.size(); i++) {
-			for (int j = 0; j < contacts[i]->count; j++){
-				Vector3d p1 = contacts[i]->positions[j];
-				Vector3d p2 = 1.5 * contacts[i]->normal + contacts[i]->positions[j];
-				glBegin(GL_LINES);
-				glVertex3f(float(p1(0)), float(p1(1)), float(p1(2)));
-				glVertex3f(float(p2(0)), float(p2(1)), float(p2(2)));
-				glEnd();
-				glPointSize(10);
-				glBegin(GL_POINTS);
-				glVertex3f(float(p1(0)), float(p1(1)), float(p1(2)));
-				glEnd();
-			}
-		}
-	}
-
-	glColor3f(0.0, 0.0, 0.0); // black
-	glLineWidth(3);
-	for (int i = 0; i < springs.size(); i++) {
-		Vector3d p0 = bodies[springs[i]->i]->nodes[springs[i]->in]->x;
-		Vector3d p1 = bodies[springs[i]->k]->nodes[springs[i]->kn]->x;
-		glBegin(GL_LINES);
-		glVertex3f(float(p0(0)), float(p0(1)), float(p0(2)));
-		glVertex3f(float(p1(0)), float(p1(1)), float(p1(2)));
-		glEnd();
-	}
-
 	
-
-	for (int t = 0; t < numCylinders; t++) {
-		auto c = cylinders[t];
-		// Draw Wrapper
-		glColor3f(0.0, 0.0, 0.0); // black
-		glBegin(GL_LINE_STRIP);
-		Vector3f end = c->S->x.cast <float>();
-		glVertex3f(end(0), end(1), end(2));
-			
-		if (wp_stat(t) == 1) {
-
-			for (int i = 0; i < numWrapPoints + 1; i++) {
-				Vector3f p = wp.block<3, 1>(3*t, i);
-				glVertex3f(p(0), p(1), p(2));
-			}
-		}
-
-
-		Vector3f start = c->P->x.cast <float>();
-		glVertex3f(start(0), start(1), start(2));
-		glEnd();
-
-		// Draw Wrapper Forces
-		glColor3f(1.0, 1.0, 0.0); // yellow
-		glBegin(GL_LINES);
-		Vector3d e = c->fp + c->P->x;
-		Vector3d f = c->fs + c->S->x;
-		glVertex3f(float(c->P->x(0)), float(c->P->x(1)), float(c->P->x(2)));
-		glVertex3f(float(e(0)), float(e(1)), float(e(2)));
-
-		glVertex3f(float(c->S->x(0)), float(c->S->x(1)), float(c->S->x(2)));
-		glVertex3f(float(f(0)), float(f(1)), float(f(2)));
-		glEnd();
-
-	}
+	drawRBnodes();
+	drawSprings();
+	drawBoxBoxCol();
+	drawWrapCylinders();
 	
 	MV->popMatrix();
 	p2->unbind();
-}
-
-void RigidBody::updatePosNor() {
-	// update 
-	for (int i = 0; i < numRB; i++) {
-		bodies[i]->updatePosition();
-	}
-
-	for (int i = 0; i < numRB; i++) {
-		for (int iface = 0; iface < nTriFaces; iface++) {
-			Vector3d p1 = bodies[i]->nodes[out.trifacelist[3 * iface + 0]]->x;
-			Vector3d p2 = bodies[i]->nodes[out.trifacelist[3 * iface + 1]]->x;
-			Vector3d p3 = bodies[i]->nodes[out.trifacelist[3 * iface + 2]]->x;
-
-			//Position
-			Vector3d e1 = p2 - p1;
-			Vector3d e2 = p3 - p1;
-			Vector3d normal = e1.cross(e2);
-			normal.normalize();
-
-			for (int idx = 0; idx < 3; idx++) {
-				posBuf[nTriFaces * 9 * i + 9 * iface + 0 + idx] = p1(idx);
-				posBuf[nTriFaces * 9 * i + 9 * iface + 3 + idx] = p2(idx);
-				posBuf[nTriFaces * 9 * i + 9 * iface + 6 + idx] = p3(idx);
-				norBuf[nTriFaces * 9 * i + 9 * iface + 0 + idx] = normal(idx);
-				norBuf[nTriFaces * 9 * i + 9 * iface + 3 + idx] = normal(idx);
-				norBuf[nTriFaces * 9 * i + 9 * iface + 6 + idx] = normal(idx);
-			}
-		}
-	}
 }
 
 Matrix3d RigidBody::vec2crossmatrix(Vector3d a) {

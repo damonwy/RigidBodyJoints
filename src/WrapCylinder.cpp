@@ -46,9 +46,6 @@ void WrapCylinder::compute()
 			+ (q(1) - t(1)) * (q(1) - t(1))) / (R*R);
 	double qt_xy = R * acos(qt_i);
 	this->path_length = qt_xy;
-	if (path_length < 0.01f) {
-		this->status = no_wrap;
-	}
 
 	double pq_xy = sqrt((p(0) - q(0)) * (p(0) - q(0)) +
 		(p(1) - q(1)) * (p(1) - q(1)));

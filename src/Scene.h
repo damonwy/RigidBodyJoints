@@ -15,6 +15,7 @@ class Program;
 class Shape;
 class RigidBody;
 class Cylinder;
+class DoubleCylinder;
 
 class Scene
 {
@@ -40,11 +41,14 @@ private:
 	Eigen::Vector3d grav;
 
 	int numCylinders;
+	int numDoubleCylinders;
 	
 	std::shared_ptr<RigidBody> rigidbody;
 
 	std::vector< std::shared_ptr<Shape> > cylinderShapes;
+	std::vector< std::shared_ptr<Shape> > dcShapes;
 	std::vector< std::shared_ptr<Particle> > cylinders;
+	std::vector < std::shared_ptr<Particle> > doublecylinders;
 };
 
 #endif // RIGIDBODYJOINTS_SRC_SCENE_H_
