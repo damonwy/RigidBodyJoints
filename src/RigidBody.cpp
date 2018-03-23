@@ -37,7 +37,7 @@ RigidBody::RigidBody() {
 	this->numJoints = 2;
 	this->numSprings = 0;
 	this->numCylinders = 1;
-	this->numWrapPoints = 20;
+	this->numWrapPoints = 10;
 	this->numFixed = 1;
 	this->yfloor = 0.0;
 	this->isBoxBoxCol = false;
@@ -252,7 +252,6 @@ void RigidBody::initAfterNumRB() {
 		init_R.block<3, 3>(i * 3, 0) = I;
 	}
 
-
 }
 
 void RigidBody::initShape() {
@@ -348,7 +347,10 @@ void RigidBody::computeWrapCylinderForces() {
 		auto c = cylinders[i];
 		double f = c->stiffness * (c->l / c->L);
 		Vector3d fp = -f * c->pdir;
+
+		c->fp = fp;
 		Vector3d fs = -f * c->sdir;
+		c->fs = fs;
 
 		gamma.block<3, 3>(0, 0) = vec2crossmatrix(c->P->x0).transpose();
 		VectorXd wrench0 = (bodies[c->P->rb_id]->R * gamma).transpose() * fp;
@@ -666,6 +668,9 @@ void RigidBody::updateWrapCylinders() {
 		WrapCylinder wc(c->P->x.cast <float>(), c->S->x.cast <float>(), c->O->x.cast <float>(), c->Z.cast <float>(),c->r);
 		wc.compute();
 		if (wc.getStatus() == wrap) {
+			cout << wc.getLength() << endl;
+			cout << i << endl;
+			cout << wc.getPoints(numWrapPoints) << endl;
 			wp.block(3 * i, 0, 3, numWrapPoints + 1) = wc.getPoints(numWrapPoints);
 			wp_stat(i) = 1;
 			wp_length(i) = double(wc.getLength());
@@ -820,12 +825,14 @@ void RigidBody::draw(shared_ptr<MatrixStack> MV, const shared_ptr<Program> p, co
 		glEnd();
 	}
 
-	// Draw Wrapper
+	
 
 	for (int t = 0; t < numCylinders; t++) {
-		
+		auto c = cylinders[t];
+		// Draw Wrapper
+		glColor3f(0.0, 0.0, 0.0); // black
 		glBegin(GL_LINE_STRIP);
-		Vector3f end = cylinders[t]->S->x.cast <float>();
+		Vector3f end = c->S->x.cast <float>();
 		glVertex3f(end(0), end(1), end(2));
 			
 		if (wp_stat(t) == 1) {
@@ -837,9 +844,22 @@ void RigidBody::draw(shared_ptr<MatrixStack> MV, const shared_ptr<Program> p, co
 		}
 
 
-		Vector3f start = cylinders[t]->P->x.cast <float>();
+		Vector3f start = c->P->x.cast <float>();
 		glVertex3f(start(0), start(1), start(2));
 		glEnd();
+
+		// Draw Wrapper Forces
+		glColor3f(1.0, 1.0, 0.0); // yellow
+		glBegin(GL_LINES);
+		Vector3d e = c->fp + c->P->x;
+		Vector3d f = c->fs + c->S->x;
+		glVertex3f(float(c->P->x(0)), float(c->P->x(1)), float(c->P->x(2)));
+		glVertex3f(float(e(0)), float(e(1)), float(e(2)));
+
+		glVertex3f(float(c->S->x(0)), float(c->S->x(1)), float(c->S->x(2)));
+		glVertex3f(float(f(0)), float(f(1)), float(f(2)));
+		glEnd();
+
 	}
 	
 	MV->popMatrix();

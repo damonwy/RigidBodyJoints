@@ -46,6 +46,9 @@ void WrapCylinder::compute()
 			+ (q(1) - t(1)) * (q(1) - t(1))) / (R*R);
 	double qt_xy = R * acos(qt_i);
 	this->path_length = qt_xy;
+	if (path_length < 0.01f) {
+		this->status = no_wrap;
+	}
 
 	double pq_xy = sqrt((p(0) - q(0)) * (p(0) - q(0)) +
 		(p(1) - q(1)) * (p(1) - q(1)));
@@ -61,6 +64,15 @@ void WrapCylinder::compute()
 	Eigen::Vector3f T = this->M.transpose() * t + this->point_O;
 
 	// std::cout << Q.transpose() << std::endl << T.transpose() << std::endl;
+	if (R * (q(0) * t(1) - q(1) * t(0)) > 0.0f)
+	{
+		this->status = no_wrap;
+	}
+
+	if ((denom_q - R*R < 0.0f) || (denom_t - R*R < 0.0f))
+	{
+		this->status = inside_radius;
+	}
 }
 
 Eigen::MatrixXf WrapCylinder::getPoints(int num_points)

@@ -32,6 +32,9 @@ public:
 
 	Eigen::Vector3d pdir;			// the direction of p
 	Eigen::Vector3d sdir;			// the direction of s
+
+	Eigen::Vector3d fp;
+	Eigen::Vector3d fs;
 };
 
 #endif // RIGIDBODYJOINTS_SRC_CYLINDER_H_
