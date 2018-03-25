@@ -207,13 +207,13 @@ Eigen::MatrixXf WrapDoubleCylinder::getPoints(int num_points)
 
 	int col = 0;
 	double z_i = z_s, dz = (z_e - z_s) / num_points;
-	for (double i = theta_s; i <= theta_e + 0.000001;
+	for (double i = theta_s; i <= theta_e + 0.00001;
 		i += (theta_e - theta_s) / num_points)
 	{
 		Eigen::Vector3f point = this->M_U.transpose() *
 			Eigen::Vector3f(this->radius_U * cos(i),
 				this->radius_U * sin(i), z_i) +
-			this->point_O;
+			this->point_U;
 		z_i += dz;
 		
 		points.col(col++) = point;
@@ -250,13 +250,13 @@ Eigen::MatrixXf WrapDoubleCylinder::getPoints(int num_points)
 
 	z_i = z_s;
 	dz = (z_e - z_s) / num_points;
-	for (double i = theta_s; i <= theta_e + 0.0000001;
+	for (double i = theta_s; i <= theta_e + 0.00001;
 		i += (theta_e - theta_s) / num_points)
 	{
 		Eigen::Vector3f point = this->M_V.transpose() *
 			Eigen::Vector3f(this->radius_V * cos(i),
 				this->radius_V * sin(i), z_i) +
-			this->point_O;
+			this->point_V;
 		z_i += dz;
 		points.col(col++) = point;
 	}

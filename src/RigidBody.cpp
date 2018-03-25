@@ -40,7 +40,7 @@ RigidBody::RigidBody() {
 	this->numSprings = 0;
 	this->numCylinders = 1;
 	this->numDoubleCylinders = 1;
-	this->numWrapPoints = 10;
+	this->numWrapPoints = 20;
 	this->numFixed = 1;
 	this->yfloor = 0.0;
 	this->isBoxBoxCol = false;
@@ -890,13 +890,13 @@ void RigidBody::updateDoubleWrapCylinders() {
 			
 			
 			wpdc.block(3 * i, 0, 3, 3 * numWrapPoints + 1) = wdc.getPoints(numWrapPoints);
-			for (int j = 0; j < numWrapPoints; j++) {
+			/*for (int j = 0; j < numWrapPoints; j++) {
 				wpdc.block(3 * i, j, 3, 1) = wpdc.block(3 * i, j, 3, 1) + dc->U->x.cast<float>();
 			}
 
 			for (int j = 2 * numWrapPoints; j < 3 * numWrapPoints + 1; j++) {
 				wpdc.block(3 * i, j, 3, 1) = local2world(bodies[dc->V->rb_id]->E, wpdc.block(3 * i, j, 3, 1).cast<double>() + init_dcyl_V.segment<3>(0)).cast<float>();
-			}
+			}*/
 
 
 			wpdc_stat(i) = 1;
