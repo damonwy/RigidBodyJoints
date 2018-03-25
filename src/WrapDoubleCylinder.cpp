@@ -1,5 +1,5 @@
 #include "WrapDoubleCylinder.h"
-
+#include <iostream>
 void WrapDoubleCylinder::compute()
 {
 	// compute Matrix U and V
@@ -207,7 +207,7 @@ Eigen::MatrixXf WrapDoubleCylinder::getPoints(int num_points)
 
 	int col = 0;
 	double z_i = z_s, dz = (z_e - z_s) / num_points;
-	for (double i = theta_s; i <= theta_e + 0.001;
+	for (double i = theta_s; i <= theta_e + 0.000001;
 		i += (theta_e - theta_s) / num_points)
 	{
 		Eigen::Vector3f point = this->M_U.transpose() *
@@ -215,6 +215,7 @@ Eigen::MatrixXf WrapDoubleCylinder::getPoints(int num_points)
 				this->radius_U * sin(i), z_i) +
 			this->point_O;
 		z_i += dz;
+		
 		points.col(col++) = point;
 	}
 
@@ -249,7 +250,7 @@ Eigen::MatrixXf WrapDoubleCylinder::getPoints(int num_points)
 
 	z_i = z_s;
 	dz = (z_e - z_s) / num_points;
-	for (double i = theta_s; i <= theta_e + 0.001;
+	for (double i = theta_s; i <= theta_e + 0.0000001;
 		i += (theta_e - theta_s) / num_points)
 	{
 		Eigen::Vector3f point = this->M_V.transpose() *
