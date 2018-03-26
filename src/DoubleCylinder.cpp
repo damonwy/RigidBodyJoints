@@ -22,7 +22,7 @@ DoubleCylinder::DoubleCylinder(std::shared_ptr<Particle> _P, std::shared_ptr<Par
 	this->U = _U;
 	this->V = _V;
 	this->L = -1.0;
-	this->stiffness = 10;
+	this->stiffness = 20;
 }
 
 DoubleCylinder::~DoubleCylinder() {
