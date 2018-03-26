@@ -22,7 +22,7 @@ Cylinder::Cylinder(shared_ptr<Particle> _P, shared_ptr<Particle> _S, shared_ptr<
 	this->S = _S;
 	this->O = _O;
 	this->L = -1.0;
-	this->stiffness = 40;
+	this->stiffness = 10;
 }
 
 Cylinder::~Cylinder()

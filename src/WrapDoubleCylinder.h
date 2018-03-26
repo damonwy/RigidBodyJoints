@@ -1,4 +1,3 @@
-#pragma once
 #ifndef WrapDoubleCylinder_H
 #define WrapDoubleCylinder_H
 

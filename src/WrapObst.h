@@ -1,4 +1,3 @@
-#pragma once
 #ifndef WrapObst_H
 #define WrapObst_H
 

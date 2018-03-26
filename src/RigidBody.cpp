@@ -32,14 +32,13 @@ using namespace Eigen;
 typedef Eigen::Triplet<double> ETriplet;
 double inf = numeric_limits<double>::infinity();
 
-
 RigidBody::RigidBody() {
 	// change when model changes
 	this->numRB = 3;
 	this->numJoints = 2;
 	this->numSprings = 0;
 	this->numCylinders = 1;
-	this->numDoubleCylinders = 1;
+	this->numDoubleCylinders = 2;
 	this->numWrapPoints = 20;
 	this->numFixed = 1;
 	this->yfloor = 0.0;
@@ -132,20 +131,29 @@ RigidBody::RigidBody() {
 	init_cyl_P_rb << 0;
 	init_cyl_S_rb << 2;
 
-	init_dcyl_P << 1.0, 3.0, 0.0;
-	init_dcyl_P_rb << 0;
-	init_dcyl_S << 1.0, -3.0, 0.0;
-	init_dcyl_S_rb << 1;
+	init_dcyl_P << 1.0, 3.0, 0.0,
+				1.0, 3.0, 0.0;
 
-	init_dcyl_U << 1.5, -1.0, -0.2;
-	init_dcyl_U_rb << 0;
-	init_dcyl_Uz << 0.0, 0.0, -1.0;
-	init_dcyl_Ur << 0.4;
+	init_dcyl_P_rb << 0, 1;
+	init_dcyl_S << 1.0, -3.0, 0.0,
+				1.0, -3.0, 0.0;
+	init_dcyl_S_rb << 1, 2;
 
-	init_dcyl_V << 1.5, 1.5, -0.2;
-	init_dcyl_V_rb << 1;
-	init_dcyl_Vz << 0.0, 0.0, 1.0;
-	init_dcyl_Vr << 0.4;
+	init_dcyl_U << 1.5, -1.0, -0.2,
+					1.5, -1.0, -0.2;
+
+	init_dcyl_U_rb << 0, 1;
+	init_dcyl_Uz << 0.0, 0.0, -1.0,
+					0.0, 0.0, -1.0;
+	init_dcyl_Ur << 0.4, 0.3;
+
+	init_dcyl_V << 1.5, 1.5, -0.2,
+				1.5, 1.5, -0.2;
+
+	init_dcyl_V_rb << 1, 2;
+	init_dcyl_Vz << 0.0, 0.0, 1.0,
+					0.0, 0.0, 1.0;
+	init_dcyl_Vr << 0.4, 0.7;
 
 
 	//-------------------------------------------------------------
@@ -462,7 +470,7 @@ void RigidBody::computeSpringForces() {
 void RigidBody::computeWrapCylinderForces() {
 	for (int i = 0; i < numCylinders; i++) {
 		auto c = cylinders[i];
-		double f = c->stiffness * (c->l / c->L);
+		double f = c->stiffness * (c->l / c->L-1);
 		Vector3d fp = -f * c->pdir;
 
 		c->fp = fp;
@@ -482,7 +490,7 @@ void RigidBody::computeWrapCylinderForces() {
 void RigidBody::computeWrapDoubleCylinderForces() {
 	for (int i = 0; i < numDoubleCylinders; i++) {
 		auto dc = doublecylinders[i];
-		double f = dc->stiffness * (dc->l / dc->L);
+		double f = dc->stiffness * (dc->l / dc->L-1);
 		Vector3d fp = -f * dc->pdir;
 
 		dc->fp = fp;
@@ -498,7 +506,6 @@ void RigidBody::computeWrapDoubleCylinderForces() {
 		bodies[dc->S->rb_id]->setBodyForce(wrench1);
 	}
 }
-
 
 void RigidBody::setJointConstraints(int &currentrow) {
 	MatrixXd Gi, Gk;
@@ -732,11 +739,11 @@ void RigidBody::setObjective(double h) {
 	}
 
 	if (numCylinders != 0) {
-		//computeWrapCylinderForces();
+		computeWrapCylinderForces();
 	}
 
 	if (numDoubleCylinders != 0) {
-		//computeWrapDoubleCylinderForces();
+		computeWrapDoubleCylinderForces();
 	}
 
 	for (int i = 0; i < numRB; i++) {
@@ -810,8 +817,6 @@ void RigidBody::updateWrapCylinders() {
 		wc.compute();
 	
 		if (wc.getStatus() == wrap) {
-			wpc.block(int(3 * i), 0, 3, numWrapPoints + 1).setZero();
-			
 			wpc.block(int(3 * i), 0, 3, numWrapPoints + 1) = wc.getPoints(numWrapPoints);
 			
 			wpc_stat(i) = 1;
@@ -867,14 +872,7 @@ void RigidBody::updateDoubleWrapCylinders() {
 		dc->V->x = local2world(bodies[dc->V->rb_id]->E, dc->V->x0);
 		dc->P->x = local2world(bodies[dc->P->rb_id]->E, dc->P->x0);
 		dc->S->x = local2world(bodies[dc->S->rb_id]->E, dc->S->x0);
-		
-		// Important: origin of U-cylinder frame expressed in V-cylinder frame, and V in U too
-		Vector3d UinV = local2world(bodies[dc->V->rb_id]->E.inverse(), dc->U->x);
-		Vector3d VinU = local2world(bodies[dc->U->rb_id]->E.inverse(), dc->V->x);
 
-		
-		cout << dc->U->x << endl;
-		cout << dc->V->x << endl;
 		WrapDoubleCylinder wdc(dc->P->x.cast <float>(), 
 			dc->S->x.cast <float>(), 
 			dc->U->x.cast <float>(), 
@@ -883,37 +881,28 @@ void RigidBody::updateDoubleWrapCylinders() {
 			dc->V->x.cast <float>(), 
 			dc->Zv.cast <float>(), 
 			dc->Vr);
-
+		
 		wdc.compute();
 		
 		if (wdc.getStatus() == wrap) {
 			
 			
 			wpdc.block(3 * i, 0, 3, 3 * numWrapPoints + 1) = wdc.getPoints(numWrapPoints);
-			/*for (int j = 0; j < numWrapPoints; j++) {
-				wpdc.block(3 * i, j, 3, 1) = wpdc.block(3 * i, j, 3, 1) + dc->U->x.cast<float>();
-			}
-
-			for (int j = 2 * numWrapPoints; j < 3 * numWrapPoints + 1; j++) {
-				wpdc.block(3 * i, j, 3, 1) = local2world(bodies[dc->V->rb_id]->E, wpdc.block(3 * i, j, 3, 1).cast<double>() + init_dcyl_V.segment<3>(0)).cast<float>();
-			}*/
-
 
 			wpdc_stat(i) = 1;
 			wpdc_length(i) = double(wdc.getLength());
 
-			Vector3d end = wpdc.block<3, 1>(3 * i, 0).cast <double>();
+			Vector3d start = wpdc.block<3, 1>(3 * i, 0).cast <double>();
 			
-			Vector3d start;
+			Vector3d end;
 			
 			for (int j = 0; j < 3 * numWrapPoints + 1; j++) {
 				if (isnan(wpdc(3 * i, j))) {
-					start = wpdc.block<3, 1>(3 * i, j-1).cast <double>();
-					cout << j-1 << endl;
+					end = wpdc.block<3, 1>(3 * i, j-1).cast <double>();
 					break;
 				}
 				else {
-					start = wpdc.block<3, 1>(3 * i, j).cast <double>();
+					end = wpdc.block<3, 1>(3 * i, j).cast <double>();
 					
 
 				}
@@ -945,7 +934,6 @@ void RigidBody::updateDoubleWrapCylinders() {
 			}
 		}
 	}
-
 }
 
 void RigidBody::updatePosNor() {
@@ -1035,30 +1023,35 @@ void RigidBody::drawWrapCylinders()const {
 		glColor3f(0.0, 0.0, 0.0); // black
 		glBegin(GL_LINE_STRIP);
 		Vector3f end = c->S->x.cast <float>();
-		glVertex3f(end(0), end(1), end(2));
+		Vector3f start = c->P->x.cast <float>();
 
+		glVertex3f(end(0), end(1), end(2));
 		if (wpc_stat(t) == 1) {
 
+
 			for (int i = 0; i < numWrapPoints + 1; i++) {
-				if (isnan(wpc(3 * t, i))) {	
+				Vector3f p = wpc.block<3, 1>(3 * t, i);
+				glVertex3f(p(0), p(1), p(2));
+
+				/*if (isnan(wpc(3 * t, i))) {	
 					break;
 				}
 				else {
 					Vector3f p = wpc.block<3, 1>(3 * t, i);
 					glVertex3f(p(0), p(1), p(2));
-				}
+				}*/
 			}
 		}
 
-		Vector3f start = c->P->x.cast <float>();
 		glVertex3f(start(0), start(1), start(2));
 		glEnd();
 
 		// Draw Wrapper Forces
 		glColor3f(1.0, 1.0, 0.0); // yellow
 		glBegin(GL_LINES);
-		Vector3d e = c->fp + c->P->x;
-		Vector3d f = c->fs + c->S->x;
+		double scale = 1.0;
+		Vector3d e = c->fp*scale + c->P->x;
+		Vector3d f = c->fs*scale + c->S->x;
 		glVertex3f(float(c->P->x(0)), float(c->P->x(1)), float(c->P->x(2)));
 		glVertex3f(float(e(0)), float(e(1)), float(e(2)));
 
@@ -1091,7 +1084,6 @@ void RigidBody::drawDoubleWrapCylinders()const {
 		
 		glVertex3f(start(0), start(1), start(2));
 		if (wpdc_stat(t) == 1) {
-			
 
 			for (int i = 0; i < numWrapPoints ; i++) {
 				if (isnan(wpdc(3 * t, i))) {
@@ -1103,7 +1095,7 @@ void RigidBody::drawDoubleWrapCylinders()const {
 				}	
 			}
 			
-			for (int i = 3*numWrapPoints; i > 2 * numWrapPoints ; i--) {
+			for (int i = 3*numWrapPoints; i > 2 * numWrapPoints+1 ; i--) {
 				if (isnan(wpdc(3 * t, i))) {
 					break;
 				}
@@ -1112,6 +1104,7 @@ void RigidBody::drawDoubleWrapCylinders()const {
 					glVertex3f(p(0), p(1), p(2));
 				}
 			}
+
 		}
 		glVertex3f(end(0), end(1), end(2));
 		

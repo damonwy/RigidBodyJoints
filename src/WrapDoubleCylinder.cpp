@@ -1,5 +1,5 @@
 #include "WrapDoubleCylinder.h"
-#include <iostream>
+
 void WrapDoubleCylinder::compute()
 {
 	// compute Matrix U and V
@@ -123,7 +123,7 @@ void WrapDoubleCylinder::compute()
 		double denom_h = gv(0)*gv(0) + gv(1)*gv(1);
 		double root_h = sqrt(denom_h - Rv*Rv);
 
-		Eigen::Vector3f h(0.0f, 0.0f, 0.0f);
+		h = Eigen::Vector3f(0.0f, 0.0f, 0.0f);
 		h(0) = (gv(0) * Rv*Rv + Rv * gv(1) * root_h) / denom_h;
 		h(1) = (gv(1) * Rv*Rv - Rv * gv(0) * root_h) / denom_h;
 
@@ -145,8 +145,8 @@ void WrapDoubleCylinder::compute()
 		h(2) = gv(2) + (sv(2) - gv(2)) * gh_xy / (gh_xy + ht_xy + ts_xy);
 		t(2) = sv(2) - (sv(2) - gv(2)) * ts_xy / (gh_xy + ht_xy + ts_xy);
 
-		Eigen::Vector3f H = this->M_V.transpose() * h + this->point_V;
-		Eigen::Vector3f T = this->M_V.transpose() * t + this->point_V;
+		H = this->M_V.transpose() * h + this->point_V;
+		T = this->M_V.transpose() * t + this->point_V;
 
 		len += (G - H).norm();
 
@@ -161,9 +161,12 @@ void WrapDoubleCylinder::compute()
 	this->point_g = g;
 	this->point_h = h;
 	this->point_t = t;
-	// std::cout << Q.transpose() << std::endl << G.transpose() << std::endl
-	//           << H.transpose() << std::endl << T.transpose() << std::endl;
+	/*
+	std::cout << Q.transpose() << std::endl << G.transpose() << std::endl
+	<< H.transpose() << std::endl << T.transpose() << std::endl;
+	*/
 }
+
 
 Eigen::MatrixXf WrapDoubleCylinder::getPoints(int num_points)
 {
@@ -179,7 +182,7 @@ Eigen::MatrixXf WrapDoubleCylinder::getPoints(int num_points)
 	if (this->point_h(0) < 0.0f)
 		theta_h += PI;
 
-	double theta_t = atan(this->point_g(1) / this->point_g(0));
+	double theta_t = atan(this->point_t(1) / this->point_t(0));
 	if (this->point_t(0) < 0.0f)
 		theta_t += PI;
 
@@ -207,24 +210,26 @@ Eigen::MatrixXf WrapDoubleCylinder::getPoints(int num_points)
 
 	int col = 0;
 	double z_i = z_s, dz = (z_e - z_s) / num_points;
-	for (double i = theta_s; i <= theta_e + 0.00001;
+	for (double i = theta_s; i <= theta_e + 0.001;
 		i += (theta_e - theta_s) / num_points)
-	{
+	{	
+		if (col == num_points + 1) {
+			break;
+		}
 		Eigen::Vector3f point = this->M_U.transpose() *
 			Eigen::Vector3f(this->radius_U * cos(i),
 				this->radius_U * sin(i), z_i) +
 			this->point_U;
 		z_i += dz;
-		
 		points.col(col++) = point;
 	}
 
 	// g to h
-	Eigen::Vector3f G = this->M_U.transpose() * this->point_g;
-	Eigen::Vector3f H = this->M_V.transpose() * this->point_h;
+	Eigen::Vector3f G = this->M_U.transpose() * this->point_g + this->point_U;
+	Eigen::Vector3f H = this->M_V.transpose() * this->point_h + this->point_V;
 	Eigen::Vector3f diff = H - G;
 
-	for (int i = 0; i < num_points - 1; i++)
+	for (int i = 1; i < num_points; i++)
 	{
 		Eigen::Vector3f point = G + diff / num_points * i;
 		points.col(col++) = point;
@@ -250,9 +255,12 @@ Eigen::MatrixXf WrapDoubleCylinder::getPoints(int num_points)
 
 	z_i = z_s;
 	dz = (z_e - z_s) / num_points;
-	for (double i = theta_s; i <= theta_e + 0.00001;
+	for (double i = theta_s; i <= theta_e + 0.001;
 		i += (theta_e - theta_s) / num_points)
 	{
+		if (col == 3 * num_points + 1) {
+			break;
+		}
 		Eigen::Vector3f point = this->M_V.transpose() *
 			Eigen::Vector3f(this->radius_V * cos(i),
 				this->radius_V * sin(i), z_i) +

@@ -1,4 +1,3 @@
-#pragma once
 #ifndef WrapSphere_H
 #define WrapSphere_H
 

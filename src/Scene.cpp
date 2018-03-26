@@ -43,10 +43,7 @@ void Scene::load(const string &RESOURCE_DIR)
 		cylinderShapes.push_back(cylinderShape);
 
 		cylinderShape->loadMesh(RESOURCE_DIR + "cylinder.obj");
-		//cylinderShape->resize(1.0);
-		cylinderShape->resize(rigidbody->cylinders[i]->r/0.4);
 		cylinderShape->rotate(R);
-		
 
 		auto cylinder = make_shared<Particle>(cylinderShapes[i]);
 
@@ -64,14 +61,11 @@ void Scene::load(const string &RESOURCE_DIR)
 		dcShapes.push_back(dcShape1);
 
 		dcShape0->loadMesh(RESOURCE_DIR + "cylinder.obj");
-		//cylinderShape->resize(1.0);
-		dcShape0->resize(rigidbody->doublecylinders[i]->Ur / 0.4);
 		dcShape0->rotate(R);
 		dcShape1->loadMesh(RESOURCE_DIR + "cylinder.obj");
-		dcShape1->resize(rigidbody->doublecylinders[i]->Vr / 0.4);
 		dcShape1->rotate(R);
-		auto dc0 = make_shared<Particle>(dcShapes[i + 0]);
-		auto dc1 = make_shared<Particle>(dcShapes[i + 1]);
+		auto dc0 = make_shared<Particle>(dcShapes[2*i + 0]);
+		auto dc1 = make_shared<Particle>(dcShapes[2*i + 1]);
 		doublecylinders.push_back(dc0);
 		doublecylinders.push_back(dc1);
 		dc0->r = rigidbody->doublecylinders[i]->Ur;
@@ -131,8 +125,8 @@ void Scene::step()
 	}
 	if (!doublecylinders.empty()) {
 		for (int i = 0; i < numDoubleCylinders; i++) {
-			doublecylinders[i + 0]->x = rigidbody->doublecylinders[i]->U->x;
-			doublecylinders[i + 1]->x = rigidbody->doublecylinders[i]->V->x;
+			doublecylinders[2*i + 0]->x = rigidbody->doublecylinders[i]->U->x;
+			doublecylinders[2*i + 1]->x = rigidbody->doublecylinders[i]->V->x;
 		}
 	}
 }
