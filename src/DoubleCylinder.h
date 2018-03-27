@@ -35,9 +35,20 @@ public:
 
 	Eigen::Vector3d pdir;			// the direction of p
 	Eigen::Vector3d sdir;			// the direction of s
+	Eigen::Vector3d uvdir;			// the direction of u->v
 
-	Eigen::Vector3d fp;				// forces along P
-	Eigen::Vector3d fs;				// forces along S
+	Eigen::Vector3d fpu;				// forces P->U1
+	Eigen::Vector3d fsv;				// forces S->V2
+	Eigen::Vector3d fup;				// forces U->P
+	
+	Eigen::Vector3d fuv;				// forces U2->V1
+	Eigen::Vector3d fvu;				// forces V1->U2
+	Eigen::Vector3d fvs;				// forces V2->S
+
+	Eigen::Vector3d u1;					// contact point in U, near P
+	Eigen::Vector3d u2;					// contact point in U, near S
+	Eigen::Vector3d v1;
+	Eigen::Vector3d v2;
 
 
 

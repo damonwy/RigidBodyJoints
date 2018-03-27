@@ -558,19 +558,90 @@ void RigidBody::computeWrapDoubleCylinderForces() {
 	for (int i = 0; i < numDoubleCylinders; i++) {
 		auto dc = doublecylinders[i];
 		double f = dc->stiffness * (dc->l / dc->L-1);
-		Vector3d fp = -f * dc->pdir;
 
-		dc->fp = fp;
-		Vector3d fs = -f * dc->sdir;
-		dc->fs = fs;
+		if (wpdc_stat[i] == 1) {
+			// if the status is wrapped, then we need to consider six forces
 
-		gamma.block<3, 3>(0, 0) = vec2crossmatrix(dc->P->x0).transpose();
-		VectorXd wrench0 = (bodies[dc->P->rb_id]->R * gamma).transpose() * fp;
-		gamma_k.block<3, 3>(0, 0) = vec2crossmatrix(dc->S->x0).transpose();
-		VectorXd wrench1 = (bodies[dc->S->rb_id]->R * gamma_k).transpose() * fs;
+			// P->U1 path:
+			if (dc->P->rb_id == dc->U->rb_id) {
+				// if they are in the same rigid body, forces cancel out
+				dc->fpu.setZero();
+				dc->fup.setZero();
+			}
+			else {
+				// if they are in different rigid body, compute the forces and apply them
+				Vector3d fpu = -f * dc->pdir;	// apply to the rb that p is on
+				Vector3d fup = -fpu;			// apply to the rb that cylinder U is on
 
-		bodies[dc->P->rb_id]->setBodyForce(wrench0);
-		bodies[dc->S->rb_id]->setBodyForce(wrench1);
+				// save this for drawing purpose
+				dc->fpu = fpu;
+				dc->fup = fup;
+
+				gamma.block<3, 3>(0, 0) = vec2crossmatrix(dc->P->x0).transpose();
+				VectorXd wrench0 = (bodies[dc->P->rb_id]->R * gamma).transpose() * fpu;
+				bodies[dc->P->rb_id]->setBodyForce(wrench0);
+
+				// compute the local coordinate of the contact point U1 in U cylinder	
+				Vector3d u1 = local2world(bodies[dc->U->rb_id]->E.inverse(), dc->u1);
+
+				gamma_k.block<3, 3>(0, 0) = vec2crossmatrix(u1).transpose();
+				VectorXd wrench1 = (bodies[dc->U->rb_id]->R * gamma_k).transpose() * fup;
+				bodies[dc->U->rb_id]->setBodyForce(wrench1);
+			}
+
+			// U2->V1 path:
+			if (dc->U->rb_id == dc->V->rb_id) {
+				dc->fuv.setZero();
+				dc->fvu.setZero();
+			}
+			else {
+
+				Vector3d fuv = -f * dc->uvdir; 
+				Vector3d fvu = -fuv; 
+
+				dc->fuv = fuv;
+				dc->fvu = fvu;
+				// compute the local coordinate of the contact point u2 in cylinder	U
+				Vector3d u2 = local2world(bodies[dc->U->rb_id]->E.inverse(), dc->u2);
+				gamma.block<3, 3>(0, 0) = vec2crossmatrix(u2).transpose();
+				VectorXd wrench0 = (bodies[dc->U->rb_id]->R * gamma).transpose() * fuv;
+				bodies[dc->U->rb_id]->setBodyForce(wrench0);
+
+				// compute the local coordinate of the contact point v1 in cylinder	V
+				Vector3d v1 = local2world(bodies[dc->V->rb_id]->E.inverse(), dc->v1);
+
+				gamma_k.block<3, 3>(0, 0) = vec2crossmatrix(v1).transpose();
+				VectorXd wrench1 = (bodies[dc->V->rb_id]->R * gamma_k).transpose() * fvu;
+				bodies[dc->V->rb_id]->setBodyForce(wrench1);
+			}
+
+			// V2->S path:
+			if (dc->V->rb_id == dc->S->rb_id) {
+				dc->fvs.setZero();
+				dc->fsv.setZero();
+			}
+			else {
+
+				Vector3d fvs = -f * (-dc->uvdir);
+				Vector3d fsv = -fvs;
+
+				dc->fvs = fvs;
+				dc->fsv = fsv;
+
+				// compute the local coordinate of the contact point v2 in cylinder	V
+				Vector3d v2 = local2world(bodies[dc->V->rb_id]->E.inverse(), dc->v2);
+				gamma.block<3, 3>(0, 0) = vec2crossmatrix(v2).transpose();
+				VectorXd wrench0 = (bodies[dc->V->rb_id]->R * gamma).transpose() * fvs;
+				bodies[dc->V->rb_id]->setBodyForce(wrench0);
+
+				// compute the local coordinate of S
+
+				gamma_k.block<3, 3>(0, 0) = vec2crossmatrix(dc->S->x0).transpose();
+				VectorXd wrench1 = (bodies[dc->S->rb_id]->R * gamma_k).transpose() * fsv;
+				bodies[dc->S->rb_id]->setBodyForce(wrench1);
+			}
+		}
+
 	}
 }
 
@@ -976,11 +1047,18 @@ void RigidBody::updateDoubleWrapCylinders() {
 
 				}
 			}
-			
+			// set u1, u2, v1, v2
+			dc->u1 = start;
+			dc->u2 = wpdc.block<3, 1>(3 * i, numWrapPoints).cast<double>();
+			dc->v2 = wpdc.block<3, 1>(3 * i, 2 * numWrapPoints).cast<double>();
+			dc->v1 = end;
+
+
 			dc->l = wpdc_length(i) + (end - dc->S->x).norm() + (start - dc->P->x).norm();
 
 			dc->pdir = (dc->P->x - start).normalized();
 			dc->sdir = (dc->S->x - end).normalized();
+			dc->uvdir = (dc->u2 - dc->v1).normalized();
 
 			if (dc->L < 0.0) {
 				dc->L = dc->l;
@@ -1090,6 +1168,7 @@ void RigidBody::drawWrapCylinders()const {
 		auto c = cylinders[t];
 		// Draw Wrapper
 		glColor3f(0.0, 0.0, 0.0); // black
+		glLineWidth(3);
 		glBegin(GL_LINE_STRIP);
 		Vector3f end = c->S->x.cast <float>();
 		Vector3f start = c->P->x.cast <float>();
@@ -1108,7 +1187,8 @@ void RigidBody::drawWrapCylinders()const {
 		glEnd();
 
 		// Draw Wrapper Forces
-		glColor3f(1.0, 1.0, 0.0); // yellow
+		glColor3f(1.0, 0.0, 0.0); 
+		glLineWidth(5);
 		glBegin(GL_LINES);
 		
 		Vector3d e = c->fp + c->P->x;
@@ -1116,11 +1196,11 @@ void RigidBody::drawWrapCylinders()const {
 		Vector3d g = c->fpc + c->c1;
 		Vector3d h = c->fsc + c->c2;
 
-		//glVertex3f(float(c->P->x(0)), float(c->P->x(1)), float(c->P->x(2)));
-		//glVertex3f(float(e(0)), float(e(1)), float(e(2)));
+		glVertex3f(float(c->P->x(0)), float(c->P->x(1)), float(c->P->x(2)));
+		glVertex3f(float(e(0)), float(e(1)), float(e(2)));
 
-		//glVertex3f(float(c->S->x(0)), float(c->S->x(1)), float(c->S->x(2)));
-		//glVertex3f(float(f(0)), float(f(1)), float(f(2)));
+		glVertex3f(float(c->S->x(0)), float(c->S->x(1)), float(c->S->x(2)));
+		glVertex3f(float(f(0)), float(f(1)), float(f(2)));
 
 		glVertex3f(float(c->c1(0)), float(c->c1(1)), float(c->c1(2)));
 		glVertex3f(float(g(0)), float(g(1)), float(g(2)));
@@ -1151,6 +1231,7 @@ void RigidBody::drawDoubleWrapCylinders()const {
 
 		// Draw Double Wrapper
 		glColor3f(0.0, 0.0, 0.0); // black
+		glLineWidth(3);
 		glBegin(GL_LINE_STRIP);
 		
 		glVertex3f(start(0), start(1), start(2));
@@ -1182,16 +1263,37 @@ void RigidBody::drawDoubleWrapCylinders()const {
 		glEnd();
 
 		// Draw Wrapper Forces
-		glColor3f(1.0, 1.0, 0.0); // yellow
+		glColor3f(1.0, 0.0, 0.0); // red
+		glLineWidth(5);
 		glBegin(GL_LINES);
-		Vector3d e = dc->fp + dc->P->x;
-		Vector3d f = dc->fs + dc->S->x;
+		Vector3d e = dc->fpu + dc->P->x;
+		Vector3d f = dc->fsv + dc->S->x;
+		Vector3d g = dc->fup + dc->u1;
+
+		Vector3d h = dc->fuv + dc->u2;
+		Vector3d q = dc->fvu + dc->v1;
+		Vector3d p = dc->fvs + dc->v2;
 		glVertex3f(float(dc->P->x(0)), float(dc->P->x(1)), float(dc->P->x(2)));
 		glVertex3f(float(e(0)), float(e(1)), float(e(2)));
 
 		glVertex3f(float(dc->S->x(0)), float(dc->S->x(1)), float(dc->S->x(2)));
 		glVertex3f(float(f(0)), float(f(1)), float(f(2)));
+
+		glVertex3f(float(dc->u1(0)), float(dc->u1(1)), float(dc->u1(2)));
+		glVertex3f(float(g(0)), float(g(1)), float(g(2)));
+
+		glVertex3f(float(dc->u2(0)), float(dc->u2(1)), float(dc->u2(2)));
+		glVertex3f(float(h(0)), float(h(1)), float(h(2)));
+
+		glVertex3f(float(dc->v1(0)), float(dc->v1(1)), float(dc->v1(2)));
+		glVertex3f(float(q(0)), float(q(1)), float(q(2)));
+
+		glVertex3f(float(dc->v2(0)), float(dc->v2(1)), float(dc->v2(2)));
+		glVertex3f(float(p(0)), float(p(1)), float(p(2)));
+
 		glEnd();
+
+
 
 	}
 }
