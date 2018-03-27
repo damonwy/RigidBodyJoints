@@ -38,6 +38,9 @@ public:
 
 	Eigen::Vector3d fp;				// forces along P
 	Eigen::Vector3d fs;				// forces along S
+
+
+
 };
 
 #endif // RIGIDBODYJOINTS_SRC_DOUBLECYLINDER_H_

@@ -31,6 +31,9 @@ void Scene::load(const string &RESOURCE_DIR)
 	grav << 0.0, -9.8, 0.0;
 	
 	rigidbody = make_shared<RigidBody>();
+
+
+
 	numCylinders = rigidbody->numCylinders;
 	numDoubleCylinders = rigidbody->numDoubleCylinders;
 

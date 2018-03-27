@@ -5,6 +5,8 @@
 #define GLM_FORCE_RADIANS
 #include <glm/glm.hpp>
 #include <glm/gtc/type_ptr.hpp>
+#include <json.hpp>
+
 #include <math.h>       /* isnan, sqrt */
 
 #include "GLSL.h"
@@ -23,6 +25,11 @@
 #include "Shape.h"
 #include "Cylinder.h"
 #include "DoubleCylinder.h"
+
+
+// for convenience
+using json = nlohmann::json;
+
 
 #include <unsupported/Eigen/src/MatrixFunctions/MatrixExponential.h>
 
@@ -471,19 +478,79 @@ void RigidBody::computeWrapCylinderForces() {
 	for (int i = 0; i < numCylinders; i++) {
 		auto c = cylinders[i];
 		double f = c->stiffness * (c->l / c->L-1);
-		Vector3d fp = -f * c->pdir;
 
-		c->fp = fp;
-		Vector3d fs = -f * c->sdir;
-		c->fs = fs;
+		if (wpc_stat[i] == 1) {
+			// if the status is wrapped, then we need to consider four forces
 
-		gamma.block<3, 3>(0, 0) = vec2crossmatrix(c->P->x0).transpose();
-		VectorXd wrench0 = (bodies[c->P->rb_id]->R * gamma).transpose() * fp;
-		gamma_k.block<3, 3>(0, 0) = vec2crossmatrix(c->S->x0).transpose();
-		VectorXd wrench1 = (bodies[c->S->rb_id]->R * gamma_k).transpose() * fs;
+			// P->C1 path:
+			if (c->P->rb_id == c->O->rb_id) {
+				// if they are in the same rigid body, forces cancel out
+				c->fp.setZero();
+				c->fpc.setZero();
+			}
+			else {
+				// if they are in different rigid body, compute the forces and apply them
+				Vector3d fp = -f * c->pdir; // apply to the rb that p is on
+				Vector3d fpc = -fp; // apply to the rb that cylinder is on
 
-		bodies[c->P->rb_id]->setBodyForce(wrench0);
-		bodies[c->S->rb_id]->setBodyForce(wrench1);
+				c->fp = fp;
+				c->fpc = fpc;
+
+				gamma.block<3, 3>(0, 0) = vec2crossmatrix(c->P->x0).transpose();
+				VectorXd wrench0 = (bodies[c->P->rb_id]->R * gamma).transpose() * fp;
+				bodies[c->P->rb_id]->setBodyForce(wrench0);
+
+				// compute the local coordinate of the contact point in cylinder	
+				Vector3d c1 = local2world(bodies[c->O->rb_id]->E.inverse(), wpc.block<3, 1>(3 * i, numWrapPoints).cast<double>());
+
+				gamma_k.block<3, 3>(0, 0) = vec2crossmatrix(c1).transpose();
+				VectorXd wrench1 = (bodies[c->O->rb_id]->R * gamma_k).transpose() * fpc;
+				bodies[c->O->rb_id]->setBodyForce(wrench1);
+			}
+
+			// C2->S path:
+			if (c->S->rb_id == c->O->rb_id) {
+				c->fs.setZero();
+				c->fsc.setZero();
+			}
+			else {
+
+				Vector3d fs = -f * c->sdir; // apply to the rb that s is on
+				Vector3d fsc = -fs; // apply to the rb that cylinder is on
+
+				c->fs = fs;
+				c->fsc = fsc;
+
+				gamma.block<3, 3>(0, 0) = vec2crossmatrix(c->S->x0).transpose();
+				VectorXd wrench0 = (bodies[c->S->rb_id]->R * gamma).transpose() * fs;
+				bodies[c->S->rb_id]->setBodyForce(wrench0);
+
+				// compute the local coordinate of the contact point in cylinder	
+				Vector3d c2 = local2world(bodies[c->O->rb_id]->E.inverse(), wpc.block<3, 1>(3 * i, 0).cast<double>());
+
+				gamma_k.block<3, 3>(0, 0) = vec2crossmatrix(c2).transpose();
+				VectorXd wrench1 = (bodies[c->O->rb_id]->R * gamma_k).transpose() * fsc;
+				bodies[c->O->rb_id]->setBodyForce(wrench1);
+			}
+		}
+		else {
+			// if the status is not wrapped, only consider two forces, applied on P, S seperately
+			Vector3d fp = -f * c->pdir; // apply to the rb that p is on
+			c->fp = fp;
+			Vector3d fs = -f * c->sdir; // apply to the rb that s is on
+			c->fs = fs;
+			c->fpc.setZero();
+			c->fsc.setZero();
+
+			gamma.block<3, 3>(0, 0) = vec2crossmatrix(c->P->x0).transpose();
+			VectorXd wrench0 = (bodies[c->P->rb_id]->R * gamma).transpose() * fp;
+
+			gamma_k.block<3, 3>(0, 0) = vec2crossmatrix(c->S->x0).transpose();
+			VectorXd wrench1 = (bodies[c->S->rb_id]->R * gamma_k).transpose() * fs;
+
+			bodies[c->P->rb_id]->setBodyForce(wrench0);
+			bodies[c->S->rb_id]->setBodyForce(wrench1);
+		}
 	}
 }
 
@@ -835,6 +902,8 @@ void RigidBody::updateWrapCylinders() {
 					start = wpc.block<3, 1>(3 * i, j).cast <double>();
 				}
 			}
+			c->c1 = start;
+			c->c2 = end;
 			
 			c->l = wpc_length(i) + (end - c->S->x).norm() + (start - c->P->x).norm();
 
@@ -1032,14 +1101,6 @@ void RigidBody::drawWrapCylinders()const {
 			for (int i = 0; i < numWrapPoints + 1; i++) {
 				Vector3f p = wpc.block<3, 1>(3 * t, i);
 				glVertex3f(p(0), p(1), p(2));
-
-				/*if (isnan(wpc(3 * t, i))) {	
-					break;
-				}
-				else {
-					Vector3f p = wpc.block<3, 1>(3 * t, i);
-					glVertex3f(p(0), p(1), p(2));
-				}*/
 			}
 		}
 
@@ -1049,14 +1110,24 @@ void RigidBody::drawWrapCylinders()const {
 		// Draw Wrapper Forces
 		glColor3f(1.0, 1.0, 0.0); // yellow
 		glBegin(GL_LINES);
-		double scale = 1.0;
-		Vector3d e = c->fp*scale + c->P->x;
-		Vector3d f = c->fs*scale + c->S->x;
-		glVertex3f(float(c->P->x(0)), float(c->P->x(1)), float(c->P->x(2)));
-		glVertex3f(float(e(0)), float(e(1)), float(e(2)));
+		
+		Vector3d e = c->fp + c->P->x;
+		Vector3d f = c->fs + c->S->x;
+		Vector3d g = c->fpc + c->c1;
+		Vector3d h = c->fsc + c->c2;
 
-		glVertex3f(float(c->S->x(0)), float(c->S->x(1)), float(c->S->x(2)));
-		glVertex3f(float(f(0)), float(f(1)), float(f(2)));
+		//glVertex3f(float(c->P->x(0)), float(c->P->x(1)), float(c->P->x(2)));
+		//glVertex3f(float(e(0)), float(e(1)), float(e(2)));
+
+		//glVertex3f(float(c->S->x(0)), float(c->S->x(1)), float(c->S->x(2)));
+		//glVertex3f(float(f(0)), float(f(1)), float(f(2)));
+
+		glVertex3f(float(c->c1(0)), float(c->c1(1)), float(c->c1(2)));
+		glVertex3f(float(g(0)), float(g(1)), float(g(2)));
+
+		glVertex3f(float(c->c2(0)), float(c->c2(1)), float(c->c2(2)));
+		glVertex3f(float(h(0)), float(h(1)), float(h(2)));
+
 		glEnd();
 
 	}

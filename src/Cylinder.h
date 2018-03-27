@@ -35,6 +35,14 @@ public:
 
 	Eigen::Vector3d fp;
 	Eigen::Vector3d fs;
+	Eigen::Vector3d fpc;
+	Eigen::Vector3d fsc;
+
+	Eigen::Vector3d c1;				// contact point 1
+	Eigen::Vector3d c2;
+
+	int status;  // 1: wrap 0: no wrap
+
 };
 
 #endif // RIGIDBODYJOINTS_SRC_CYLINDER_H_
