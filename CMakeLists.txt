@@ -29,6 +29,15 @@ FILE(GLOB_RECURSE GLSL "resources/*.glsl")
 # Set the executable.
 ADD_EXECUTABLE(${CMAKE_PROJECT_NAME} ${SOURCES} ${HEADERS} ${GLSL})
 
+# Get JSON
+SET(JSON_HPP_DIR "$ENV{JSON_HPP_DIR}")
+IF(NOT JSON_HPP_DIR)
+  # The environment variable was not set
+  SET(ERR_MSG "Please point the environment variable JSON_HPP_DIR to the root directory of your JSON installation")
+  MESSAGE(FATAL_ERROR ${ERR_MSG})
+ENDIF()
+INCLUDE_DIRECTORIES(${JSON_HPP_DIR})
+
 # Get the GLM environment variable. Since GLM is a header-only library, we
 # just need to add it to the include directory.
 SET(GLM_INCLUDE_DIR "$ENV{GLM_INCLUDE_DIR}")
