@@ -1055,7 +1055,7 @@ void RigidBody::step(double h) {
 		Vector3d parent_w = local2world(bodies[jt->i]->E, parent_l);
 		Vector3d son_w = local2world(bodies[jt->k]->E, -parent_l);
 		Vector3d error = parent_w - son_w;
-		//cout << "error2" << endl<< error << endl;
+		cout << "error2" << endl<< error << endl;
 	}	
 }
 
