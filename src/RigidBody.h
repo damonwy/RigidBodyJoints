@@ -10,6 +10,7 @@
 #define EIGEN_DONT_ALIGN_STATICALLY
 #include <Eigen/Dense>
 #include <Eigen/Sparse>
+#include <Eigen/SparseLU>
 
 
 class MatrixStack;
@@ -45,11 +46,12 @@ public:
 	void updatePosNor();
 	void updateWrapCylinders();
 	void updateDoubleWrapCylinders();
+	void postStabilization(int &currentrow);
 
 	void computeSpringForces();
 	void computeWrapCylinderForces();
 	void computeWrapDoubleCylinderForces();
-	void setJointConstraints(int &currentrow);
+	void setJointConstraints(int &currentrow, int type);
 	void setFixedConstraints(int &currentrow);
 
 	void setEquality();
@@ -71,6 +73,7 @@ public:
 	std::shared_ptr<Spring> createSpring(int _i, int _k, int _in, int _kn, std::vector < std::shared_ptr<RBState> > bodies, double E);
 	Eigen::MatrixXd computeAdjoint(Eigen::MatrixXd E);
 	Eigen::Matrix3d vec2crossmatrix(Eigen::Vector3d a);					// repackage a vector into a cross-product matrix
+	Eigen::VectorXd crossmatrix2vec(Eigen::MatrixXd A);
 	Eigen::Vector3d local2world(Eigen::MatrixXd E, Eigen::Vector3d x);	// compute the world position given a local position x on a rigid body
 
 	tetgenio in, out;
@@ -147,6 +150,7 @@ public:
 	Eigen::Vector3d g; // gravity
 	Eigen::VectorXd RHS;
 	Eigen::VectorXd sol;
+	Eigen::VectorXd sol2;
 	Eigen::VectorXd equalvec;
 	Eigen::VectorXd convec;
 	Eigen::VectorXd conveck;

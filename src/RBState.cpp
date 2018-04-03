@@ -132,3 +132,9 @@ void RBState::updateTransformationMatrix(double h) {
 	setBodyForce(force);
 }
 
+void RBState::correctPosition(Eigen::VectorXd phi, double hh) {
+
+	EE.block<3, 1>(0, 3) = phi.segment<3>(3);
+	EE.block<3, 3>(0, 0) = vec2crossmatrix(phi.segment<3>(0));
+	E = E * (hh * EE).exp();
+}

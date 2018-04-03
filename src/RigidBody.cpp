@@ -30,8 +30,7 @@
 // for convenience
 using json = nlohmann::json;
 
-
-#include <unsupported/Eigen/src/MatrixFunctions/MatrixExponential.h>
+#include <unsupported/Eigen/MatrixFunctions>
 
 using namespace std;
 using namespace Eigen;
@@ -645,15 +644,23 @@ void RigidBody::computeWrapDoubleCylinderForces() {
 	}
 }
 
-void RigidBody::setJointConstraints(int &currentrow) {
+void RigidBody::setJointConstraints(int &currentrow, int type) {
 	MatrixXd Gi, Gk;
 	Gi.resize(6, 6);
 	Gk.resize(6, 6);
 
 	for (int i = 0; i < numJoints; i++) {
 		Gi = joints[i]->computeAdjoint(joints[i]->Eij.inverse());
-		joints[i]->computeEjk(bodies);
+		if (type == 1) {
+			joints[i]->computeEjk(bodies);
+		}
+		if (type == 0) {
+			joints[i]->computeEjkTemp(bodies);
+		}
+		
 		Gk = -joints[i]->computeAdjoint(joints[i]->Ejk); // careful about the sign!
+
+
 
 		if (joints[i]->type == BALL_JOINT) {
 			for (int j = 0; j < 3; j++) {
@@ -677,6 +684,13 @@ void RigidBody::setJointConstraints(int &currentrow) {
 				}
 			}
 		}
+
+		// Stabilization
+		//MatrixXd Ekj = joints[i]->Ejk.inverse();
+		//MatrixXd EJj = joints[i]->Eij.inverse() * bodies[joints[i]->i]->E.inverse() * bodies[joints[i]->k]->E * Ekj;
+		//MatrixXd err = EJj.log();
+		//VectorXd correctedg = crossmatrix2vec(err);
+		//cout << correctedg << endl;
 	}
 }
 
@@ -836,7 +850,7 @@ void RigidBody::setEquality() {
 	G_.clear();
 
 	if (numJoints != 0) {
-		setJointConstraints(currentrow);
+		setJointConstraints(currentrow,1);
 	}
 
 	if (numFixed != 0) {
@@ -890,6 +904,81 @@ void RigidBody::setObjective(double h) {
 	program->setObjectiveVector(-RHS);
 }
 
+void RigidBody::postStabilization(int &currentrow) {
+
+	equalvec.resize(numEqualities);
+	equalvec.setZero();
+
+	G_.clear();
+
+	MatrixXd Gi, Gk;
+	Gi.resize(6, 6);
+	Gk.resize(6, 6);
+
+	MatrixXd j0toB;
+	j0toB.resize(4, 4);
+	j0toB.setZero();
+	j0toB.block<3, 3>(0, 0) = I;
+	j0toB.block<3, 1>(0, 3) << 0.0, dimensions(1)*0.5, 0.0;
+	j0toB(3, 3) = 1;
+
+	for (int i = 0; i < numJoints; i++) {
+		Gi = joints[i]->computeAdjoint(joints[i]->Eij.inverse());
+		
+		joints[i]->computeEjkTemp(bodies);//btoJ
+
+		Gk = -joints[i]->computeAdjoint(joints[i]->Ejk); // careful about the sign!
+
+
+		if (joints[i]->type == BALL_JOINT) {
+			for (int j = 0; j < 3; j++) {
+				for (int k = 0; k < 6; k++) {
+					G_.push_back(ETriplet(currentrow, 6 * joints[i]->i + k, Gi(j + 3, k)));
+					G_.push_back(ETriplet(currentrow, 6 * joints[i]->k + k, Gk(j + 3, k)));
+				}
+				currentrow += 1;
+			}
+		}
+
+		if (joints[i]->type == HINGE_JOINT) {
+
+			for (int j = 0; j < 6; j++) {
+				if (j != joints[i]->hinge_type) {
+					for (int k = 0; k < 6; k++) {
+						G_.push_back(ETriplet(currentrow, 6 * joints[i]->i + k, Gi(j, k)));
+						G_.push_back(ETriplet(currentrow, 6 * joints[i]->k + k, Gk(j, k)));
+					}
+					currentrow += 1;
+				}
+			}
+		}
+
+		MatrixXd j0toJ0 = joints[i]->Ejk * j0toB;
+		MatrixXd err = j0toJ0.log();
+
+		if (isnan(err(0, 0))) {
+			err.setZero();
+		}
+		
+		VectorXd correctedg = crossmatrix2vec(err);	
+		equalvec.segment(i * 5, 2) = -correctedg.segment(0, 2);
+		equalvec.segment(i * 5 + 2, 3) = -correctedg.segment(3, 3);
+	}
+
+	GG.resize(numEqualities, numVars);
+	GG.setFromTriplets(G_.begin(), G_.end());
+	
+	program->setNumberOfEqualities(numEqualities);
+	program->setEqualityMatrix(GG);
+	program->setEqualityVector(equalvec);
+	
+	RHS.setZero();
+	program->setObjectiveVector(RHS);
+	bool success = program->solve();
+	sol2 = program->getPrimalSolution();
+}
+
+
 void RigidBody::step(double h) {
 	
 	shared_ptr<QuadProgMosek> program_ = make_shared <QuadProgMosek>();
@@ -910,18 +999,20 @@ void RigidBody::step(double h) {
 
 	setObjective(h);
 	setEquality();
-
+	
+	//sparse_to_file_as_dense(GG, "GGO");
 	bool success = program->solve();
 	sol = program->getPrimalSolution();
-
-	//joint_forces = -GG.transpose() * program->getDualEquality()/h;
-	//vec_to_file(sol, "sol");
 
 	for (int i = 0; i < numRB; i++) {	// Update node positions to detect collisions with floor
 		bodies[i]->setAngularVelocity(sol.segment<3>(6 * i + 0));
 		bodies[i]->setLinearVelocity(sol.segment<3>(6 * i + 3));
 		bodies[i]->computeTempE(h);
 	}
+	int currentrow = 0;
+	
+	// To soft the joint drifting problem
+	postStabilization(currentrow);
 
 	numInequalities = 0;
 	numColBoxBox = 0;
@@ -934,12 +1025,38 @@ void RigidBody::step(double h) {
 	if (isBoxBoxCol == true) {
 		detectBoxBoxCol();
 	}
-
+	
 	setInequality(h);
+	updatePosNor();
+
+	Vector3d parent_l;
+	parent_l << 0.0, -dimensions(1)*0.5, 0.0;
+	for (int i = 0; i < numJoints; i++) {
+		auto jt = joints[i];
+		Vector3d parent_w = local2world(bodies[jt->i]->E, parent_l);
+		Vector3d son_w = local2world(bodies[jt->k]->E, -parent_l);
+		Vector3d error = parent_w - son_w;
+		//cout << "error1" << endl << error << endl;
+	}
+	// use parameter baum = 0.1 to avoid some extreme situations, 1 is too large for this case
+	double baum = 0.1;
+	for (int i = 0; i < numRB; i++) {	
+		if (i != init_fixed_rb[0]) {
+			bodies[i]->correctPosition(-baum *sol2.segment<6>(6 * i + 0), baum); 
+		}
+	}
+
 	updatePosNor();
 	updateWrapCylinders();
   	updateDoubleWrapCylinders();
-	
+
+	for (int i = 0; i < numJoints; i++) {
+		auto jt = joints[i];
+		Vector3d parent_w = local2world(bodies[jt->i]->E, parent_l);
+		Vector3d son_w = local2world(bodies[jt->k]->E, -parent_l);
+		Vector3d error = parent_w - son_w;
+		//cout << "error2" << endl<< error << endl;
+	}	
 }
 
 void RigidBody::updateWrapCylinders() {
@@ -1374,6 +1491,19 @@ Matrix3d RigidBody::vec2crossmatrix(Vector3d a) {
 		a(2), 0, -a(0),
 		-a(1), a(0), 0;
 	return A;
+}
+
+VectorXd RigidBody::crossmatrix2vec(MatrixXd A) {
+	VectorXd x;
+	if (A.cols() < 4) {
+		x.resize(3);
+		x << A(2, 1), A(0, 2), A(1, 0);
+	}
+	else {
+		x.resize(6);
+		x << A(2, 1), A(0, 2), A(1, 0), A(0, 3), A(1, 3), A(2, 3);
+	}
+	return x;
 }
 
 Vector3d RigidBody::local2world(MatrixXd E, Vector3d x) {
