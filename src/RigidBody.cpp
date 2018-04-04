@@ -42,14 +42,25 @@ RigidBody::RigidBody() {
 	// change when model changes
 	this->numRB = 3;
 	this->numJoints = 2;
-	this->numSprings = 0;
+	this->numSprings = 1;
+	this->numCylinders = 0;
+	this->numDoubleCylinders = 0;
+	this->numWrapPoints = 20;
+	this->numFixed = 1;
+	this->yfloor = 0.0;
+	this->isBoxBoxCol = false;
+	this->isFloorCol = false;
+
+	/*this->numRB = 3;
+	this->numJoints = 2;
+	this->numSprings = 1;
 	this->numCylinders = 1;
 	this->numDoubleCylinders = 2;
 	this->numWrapPoints = 20;
 	this->numFixed = 1;
 	this->yfloor = 0.0;
 	this->isBoxBoxCol = false;
-	this->isFloorCol = false;
+	this->isFloorCol = false;*/
 
 	initConstant();
 	if (numRB != 0) {
@@ -116,7 +127,7 @@ RigidBody::RigidBody() {
 	this->yfloor = 0.0;
 	this->isBoxBoxCol = false;
 	this->isFloorCol = false;*/
-
+	muscle_density = 1.0;
 	init_v.segment<3>(3 * 2) << -10.0, 0.0, 0.0;
 	init_p << 0.0, 14.0, 0.0,
 		3.0, 11.0, 0.0,
@@ -127,7 +138,7 @@ RigidBody::RigidBody() {
 								0, 0, 1;
 
 	init_fixed_rb << 0; 
-	init_cyl_P << 0.0, 0.0, 0.0;
+	/*init_cyl_P << 0.0, 0.0, 0.0;
 	init_cyl_S << -1.0, 0.0, 0.0;
 	init_cyl_O << -1.5, 1.5, -0.2;
 	init_cyl_Z << 0.0, 0.0, -1.0;
@@ -159,11 +170,11 @@ RigidBody::RigidBody() {
 	init_dcyl_V_rb << 1, 2;
 	init_dcyl_Vz << 0.0, 0.0, 1.0,
 					0.0, 0.0, 1.0;
-	init_dcyl_Vr << 0.4, 0.7;
+	init_dcyl_Vr << 0.4, 0.7;*/
 
 
 	//-------------------------------------------------------------
-
+	stiffness = 1e2;
 	initRBs();
 
 	if (numCylinders != 0) {
@@ -384,7 +395,7 @@ void RigidBody::initRBShape() {
 	this->nVerts = out.numberofpoints;
 	this->nTriFaces = out.numberoftrifaces;
 	this->nEdges = out.numberofedges;
-	mass = nVerts * 1.0;
+	mass = nVerts * 1.0 ;
 	dimensions << 2 * abs(out.pointlist[0]), 2 * abs(out.pointlist[1]), 2 * abs(out.pointlist[2]);
 }
 
@@ -411,7 +422,7 @@ void RigidBody::initJoints() {
 }
 
 void RigidBody::initSprings(double stiffness) {
-	springs.push_back(createSpring(1, 3, 0, 3, bodies, stiffness));
+	springs.push_back(createSpring(0, 2, 3, 3, bodies, stiffness));
 }
 
 void RigidBody::initBuffers() {
@@ -467,7 +478,7 @@ void RigidBody::computeSpringForces() {
 		VectorXd wrench0 = (b0->R * gamma).transpose() * f0;
 		gamma_k.block<3, 3>(0, 0) = vec2crossmatrix(n1->x0).transpose();
 		VectorXd wrench1 = (b1->R * gamma_k).transpose() * f1;
-
+		
 		b0->setBodyForce(wrench0);
 		b1->setBodyForce(wrench1);
 	}
@@ -870,9 +881,46 @@ void RigidBody::setEquality() {
 	program->setEqualityVector(equalvec);
 }
 
+void RigidBody::updateInertia() {
+	// Update the inertia matrix of two rigid bodies connected by a spring 
+	for (int i = 0; i < springs.size(); i++) {
+		int ia = springs[i]->i;
+		int ib = springs[i]->k;
+
+		auto b0 = bodies[ia];
+		auto b1 = bodies[ib];
+
+		auto n0 = b0->nodes[springs[i]->in];
+		auto n1 = b1->nodes[springs[i]->kn];
+
+		gamma.block<3, 3>(0, 0) = vec2crossmatrix(n0->x0).transpose();
+		MatrixXd gamma_a = (b0->R * gamma);
+		gamma_k.block<3, 3>(0, 0) = vec2crossmatrix(n1->x0).transpose();
+		MatrixXd gamma_b = (b1->R * gamma_k);
+
+		MatrixXd I11 = gamma_a.transpose() * gamma_a * 1.0 / 3.0 * muscle_density;
+		MatrixXd I12 = gamma_a.transpose() * gamma_b * 1.0 / 6.0 * muscle_density;
+		MatrixXd I21 = gamma_b.transpose() * gamma_a * 1.0 / 6.0 * muscle_density;
+		MatrixXd I22 = gamma_b.transpose() * gamma_b * 1.0 / 3.0 * muscle_density;
+		
+		for (int ii = 0; ii < 6; ii++) {
+			for (int jj = 0; jj < 6; jj++) {
+				A_.push_back(ETriplet(6 * ia + ii, 6 * ia + jj, I11(ii, jj)));
+				A_.push_back(ETriplet(6 * ib + ii, 6 * ia + jj, I12(ii, jj)));
+				A_.push_back(ETriplet(6 * ib + ii, 6 * ia + jj, I21(ii, jj)));
+				A_.push_back(ETriplet(6 * ib + ii, 6 * ib + jj, I22(ii, jj)));
+			}
+		}
+	}
+}
+
 void RigidBody::setObjective(double h) {
 	// Initialize A matrix
+
+	
 	A_.clear();
+	updateInertia();
+
 	for (int i = 0; i < numRB; i++) {
 		for (int j = 0; j < 6; j++) {
 			A_.push_back(ETriplet(6 * i + j, 6 * i + j, bodies[i]->M(j, j)));
@@ -901,6 +949,7 @@ void RigidBody::setObjective(double h) {
 	for (int i = 0; i < numRB; i++) {
 		RHS.segment<6>(6 * i) = bodies[i]->computeForces(h);
 	}
+	
 	program->setObjectiveVector(-RHS);
 }
 
@@ -1003,6 +1052,7 @@ void RigidBody::step(double h) {
 	//sparse_to_file_as_dense(GG, "GGO");
 	bool success = program->solve();
 	sol = program->getPrimalSolution();
+	//cout << sol << endl;
 
 	for (int i = 0; i < numRB; i++) {	// Update node positions to detect collisions with floor
 		bodies[i]->setAngularVelocity(sol.segment<3>(6 * i + 0));
@@ -1055,7 +1105,7 @@ void RigidBody::step(double h) {
 		Vector3d parent_w = local2world(bodies[jt->i]->E, parent_l);
 		Vector3d son_w = local2world(bodies[jt->k]->E, -parent_l);
 		Vector3d error = parent_w - son_w;
-		cout << "error2" << endl<< error << endl;
+		//cout << "error2" << endl<< error << endl;
 	}	
 }
 
@@ -1525,8 +1575,8 @@ shared_ptr<Spring> RigidBody::createSpring(int _i, int _k, int _in, int _kn, vec
 	s->in = _in;
 	s->kn = _kn;
 	s->E = E;
-	Vector3d x0 = bodies[_i]->nodes[_in]->x0;
-	Vector3d x1 = bodies[_k]->nodes[_kn]->x0;
+	Vector3d x0 = local2world(bodies[_i]->E, bodies[_i]->nodes[_in]->x0) ;
+	Vector3d x1 = local2world(bodies[_k]->E, bodies[_k]->nodes[_kn]->x0) ;
 	Vector3d dx = x1 - x0;
 	s->L = dx.norm();
 	return s;

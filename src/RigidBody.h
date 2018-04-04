@@ -47,6 +47,7 @@ public:
 	void updateWrapCylinders();
 	void updateDoubleWrapCylinders();
 	void postStabilization(int &currentrow);
+	void updateInertia();
 
 	void computeSpringForces();
 	void computeWrapCylinderForces();
@@ -81,6 +82,7 @@ public:
 	double stiffness;
 	double mass;
 	double yfloor;
+	double muscle_density;
 
 	int nVerts;
 	int nTriFaces;
