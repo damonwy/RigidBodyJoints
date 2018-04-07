@@ -26,7 +26,6 @@
 #include "Cylinder.h"
 #include "DoubleCylinder.h"
 
-
 // for convenience
 using json = nlohmann::json;
 
@@ -99,8 +98,6 @@ RigidBody::RigidBody() {
 	this->isBoxBoxCol = true;
 	this->isFloorCol = true;
 
-	
-
 	init_v.segment<3>(3 * 1) << -10.0, 0.0, 0.0;
 	init_p << 0.0, 12.0, 0.0,
 		0.0, 6.0, 0.0,
@@ -127,6 +124,7 @@ RigidBody::RigidBody() {
 	this->yfloor = 0.0;
 	this->isBoxBoxCol = false;
 	this->isFloorCol = false;*/
+
 	muscle_density = 1.0;
 	init_v.segment<3>(3 * 2) << -10.0, 0.0, 0.0;
 	init_p << 0.0, 14.0, 0.0,
@@ -174,7 +172,7 @@ RigidBody::RigidBody() {
 
 
 	//-------------------------------------------------------------
-	stiffness = 1e2;
+	stiffness = 2;
 	initRBs();
 
 	if (numCylinders != 0) {
@@ -271,8 +269,8 @@ void RigidBody::initRBs() {
 			auto p = make_shared<Particle>();
 			bodies[i]->nodes.push_back(p);
 			p->x0 << out.pointlist[3 * j + 0],
-				out.pointlist[3 * j + 1],
-				out.pointlist[3 * j + 2];
+					out.pointlist[3 * j + 1],
+					out.pointlist[3 * j + 2];
 			p->v.setZero();
 		}
 	}
@@ -292,7 +290,6 @@ void RigidBody::initConstant() {
 	gamma_k.block<3, 3>(0, 3) = I;
 	convec.resize(6);
 	conveck.resize(6);
-
 }
 
 void RigidBody::init() {
@@ -475,12 +472,28 @@ void RigidBody::computeSpringForces() {
 		Vector3d f1 = -f0;
 
 		gamma.block<3, 3>(0, 0) = vec2crossmatrix(n0->x0).transpose();
-		VectorXd wrench0 = (b0->R * gamma).transpose() * f0;
+		VectorXd wrench0 = (b0->R * gamma).transpose() * (f0 );
 		gamma_k.block<3, 3>(0, 0) = vec2crossmatrix(n1->x0).transpose();
-		VectorXd wrench1 = (b1->R * gamma_k).transpose() * f1;
-		
+		VectorXd wrench1 = (b1->R * gamma_k).transpose() * (f1 );
+
 		b0->setBodyForce(wrench0);
 		b1->setBodyForce(wrench1);
+
+		//double h0 = n0->x(1);
+		//double h1 = n1->x(1);
+		//double hmid = 1.0 / 2.0 * (h1 - h0) + h0;
+		//double V = muscle_density * (9.8) * hmid /2.0; // potential energy adding to each rigid body
+		//Vector3d grav; 
+		//grav << 0.0, -1.0, 0.0;
+		//VectorXd mg0, mg1 ;
+		//mg0.resize(6);
+		//mg1.resize(6);
+		//mg0.setZero(); 
+		//mg1.setZero();
+		//mg0.segment<3>(3) = b0->R.transpose() * V * grav;
+		//mg1.segment<3>(3) = b1->R.transpose() * V * grav;
+		//b0->setBodyForce(mg0);
+		//b1->setBodyForce(mg1);
 	}
 }
 
@@ -671,8 +684,6 @@ void RigidBody::setJointConstraints(int &currentrow, int type) {
 		
 		Gk = -joints[i]->computeAdjoint(joints[i]->Ejk); // careful about the sign!
 
-
-
 		if (joints[i]->type == BALL_JOINT) {
 			for (int j = 0; j < 3; j++) {
 				for (int k = 0; k < 6; k++) {
@@ -695,13 +706,6 @@ void RigidBody::setJointConstraints(int &currentrow, int type) {
 				}
 			}
 		}
-
-		// Stabilization
-		//MatrixXd Ekj = joints[i]->Ejk.inverse();
-		//MatrixXd EJj = joints[i]->Eij.inverse() * bodies[joints[i]->i]->E.inverse() * bodies[joints[i]->k]->E * Ekj;
-		//MatrixXd err = EJj.log();
-		//VectorXd correctedg = crossmatrix2vec(err);
-		//cout << correctedg << endl;
 	}
 }
 
@@ -902,7 +906,7 @@ void RigidBody::updateInertia() {
 		MatrixXd I12 = gamma_a.transpose() * gamma_b * 1.0 / 6.0 * muscle_density;
 		MatrixXd I21 = gamma_b.transpose() * gamma_a * 1.0 / 6.0 * muscle_density;
 		MatrixXd I22 = gamma_b.transpose() * gamma_b * 1.0 / 3.0 * muscle_density;
-		
+
 		for (int ii = 0; ii < 6; ii++) {
 			for (int jj = 0; jj < 6; jj++) {
 				A_.push_back(ETriplet(6 * ia + ii, 6 * ia + jj, I11(ii, jj)));
@@ -916,12 +920,11 @@ void RigidBody::updateInertia() {
 
 void RigidBody::setObjective(double h) {
 	// Initialize A matrix
-
-	
 	A_.clear();
 	updateInertia();
 
 	for (int i = 0; i < numRB; i++) {
+		bodies[i]->clearBodyForce(); // only gravity
 		for (int j = 0; j < 6; j++) {
 			A_.push_back(ETriplet(6 * i + j, 6 * i + j, bodies[i]->M(j, j)));
 		}
@@ -946,9 +949,31 @@ void RigidBody::setObjective(double h) {
 		computeWrapDoubleCylinderForces();
 	}
 
+	MatrixXd Adense = MatrixXd(A);
+	MatrixXd PhiT;
+	VectorXd twists, bodyforces;
+
+	PhiT.resize(6 * numRB, 6 * numRB);
+	twists.resize(6 * numRB);
+	bodyforces.resize(6 * numRB);
+
+	PhiT.setZero();
+	bodyforces.setZero();
+	twists.setZero();
+
+	for (int i = 0; i < numRB; i++) {
+		twists.segment<6>(i * 6) = bodies[i]->Phi;
+		bodyforces.segment<6>(i * 6) = bodies[i]->B;
+		PhiT.block(6 * i, 6 * i, 6, 6) = bodies[i]->PhiT;
+	}
+	
+	RHS = Adense * twists + h * (PhiT * Adense * twists + bodyforces);
+	
+	/*
+	//only used when the inertia is unchanged during simulation
 	for (int i = 0; i < numRB; i++) {
 		RHS.segment<6>(6 * i) = bodies[i]->computeForces(h);
-	}
+	}*/
 	
 	program->setObjectiveVector(-RHS);
 }
@@ -977,7 +1002,6 @@ void RigidBody::postStabilization(int &currentrow) {
 		joints[i]->computeEjkTemp(bodies);//btoJ
 
 		Gk = -joints[i]->computeAdjoint(joints[i]->Ejk); // careful about the sign!
-
 
 		if (joints[i]->type == BALL_JOINT) {
 			for (int j = 0; j < 3; j++) {
@@ -1027,7 +1051,6 @@ void RigidBody::postStabilization(int &currentrow) {
 	sol2 = program->getPrimalSolution();
 }
 
-
 void RigidBody::step(double h) {
 	
 	shared_ptr<QuadProgMosek> program_ = make_shared <QuadProgMosek>();
@@ -1049,10 +1072,8 @@ void RigidBody::step(double h) {
 	setObjective(h);
 	setEquality();
 	
-	//sparse_to_file_as_dense(GG, "GGO");
 	bool success = program->solve();
 	sol = program->getPrimalSolution();
-	//cout << sol << endl;
 
 	for (int i = 0; i < numRB; i++) {	// Update node positions to detect collisions with floor
 		bodies[i]->setAngularVelocity(sol.segment<3>(6 * i + 0));

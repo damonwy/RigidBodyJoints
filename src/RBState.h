@@ -56,6 +56,7 @@ struct RBState
 	void setRotational(Eigen::Matrix3d _R);
 	void setLocalFrameOrigin(Eigen::Vector3d _p);
 	void setBodyForce(Eigen::VectorXd force);
+	void clearBodyForce();
 	void correctPosition(Eigen::VectorXd phi, double hh);
 
 	Eigen::VectorXd computeForces(double h);

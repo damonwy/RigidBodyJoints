@@ -43,9 +43,12 @@ void RBState::setRotational(Matrix3d _R) {
 
 void RBState::setSpatialInertiaMatrix() {
 	M.resize(6, 6);
-	this->M << mass / 12.0 * (dimensions(1)*dimensions(1) + dimensions(2)+dimensions(2)), 0, 0, 0, 0, 0,
-			  0, mass / 12.0 * (dimensions(0)*dimensions(0) + dimensions(2) + dimensions(2)), 0, 0, 0, 0,
-			  0, 0, mass / 12.0 * (dimensions(1)*dimensions(1) + dimensions(0) + dimensions(0)), 0, 0, 0,
+	double d0 = dimensions(0);
+	double d1 = dimensions(1);
+	double d2 = dimensions(2);
+	this->M << mass / 12.0 * (d1 * d1 + d2 * d2), 0, 0, 0, 0, 0,
+			  0, mass / 12.0 * (d0 * d0 + d2 * d2), 0, 0, 0, 0,
+			  0, 0, mass / 12.0 * (d1 * d1 + d0 * d0), 0, 0, 0,
 		0, 0, 0, mass, 0, 0,
 		0, 0, 0, 0, mass, 0,
 		0, 0, 0, 0, 0, mass;
@@ -78,16 +81,23 @@ void RBState::setAngularVelocity(Eigen::Vector3d _Omega) {
 
 void RBState::setBodyForce(VectorXd force) {
 	// if only gravity is involved
-	Eigen::Vector3d g;
-	g << 0.0, -9.8, 0.0;
-	B.setZero();
-	B.segment<3>(3) = R.transpose() * mass * g;
+	//Eigen::Vector3d g;
+	//g << 0.0, -9.8, 0.0;
+	//B.setZero();
+	//B.segment<3>(3) = R.transpose() * mass * g;
 	B = B + force;
 }
 
+void RBState::clearBodyForce(){
+	B.setZero();
+	Eigen::Vector3d g;
+	g << 0.0, -9.8, 0.0;
+	B.segment<3>(3) = R.transpose() * mass * g;
+	
+}
 
 VectorXd RBState::computeForces(double h) {
-	return (M * Phi + h * (PhiT * M * Phi + B));
+	return (M * Phi + h * (PhiT * M * Phi + B));	// only used in invariant inertia case
 
 }
 
