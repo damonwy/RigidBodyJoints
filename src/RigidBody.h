@@ -47,7 +47,7 @@ public:
 	void updateWrapCylinders();
 	void updateDoubleWrapCylinders();
 	void postStabilization(int &currentrow);
-	void updateInertia();
+	void updateInertia(double h);
 
 	void computeSpringForces();
 	void computeWrapCylinderForces();
@@ -71,7 +71,8 @@ public:
 	
 
 	void step(double h);
-	std::shared_ptr<Spring> createSpring(int _i, int _k, int _in, int _kn, std::vector < std::shared_ptr<RBState> > bodies, double E);
+	std::shared_ptr<Spring> createSpring2RB(int _i, int _k, int _in, int _kn, std::vector < std::shared_ptr<RBState> > bodies, double E);
+	std::shared_ptr<Spring> createSpring1RB(int _i, int _in, Eigen::Vector3d pos, std::vector <std::shared_ptr<RBState> > bodies, double E);
 	Eigen::MatrixXd computeAdjoint(Eigen::MatrixXd E);
 	Eigen::Matrix3d vec2crossmatrix(Eigen::Vector3d a);					// repackage a vector into a cross-product matrix
 	Eigen::VectorXd crossmatrix2vec(Eigen::MatrixXd A);
@@ -104,6 +105,7 @@ public:
 
 	bool isBoxBoxCol;	// is box to box collision on?
 	bool isFloorCol;	// is box to floor collision on?
+	bool isFEM;			// use FEM to compute Jacobian Matrix?
 
 	Eigen::Vector3d dimensions;
 

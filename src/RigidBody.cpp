@@ -49,6 +49,7 @@ RigidBody::RigidBody() {
 	this->yfloor = 0.0;
 	this->isBoxBoxCol = false;
 	this->isFloorCol = false;
+	this->isFEM = true;
 
 	/*this->numRB = 3;
 	this->numJoints = 2;
@@ -125,7 +126,7 @@ RigidBody::RigidBody() {
 	this->isBoxBoxCol = false;
 	this->isFloorCol = false;*/
 
-	muscle_density = 1.0;
+	muscle_density = 10.0;
 	init_v.segment<3>(3 * 2) << -10.0, 0.0, 0.0;
 	init_p << 0.0, 14.0, 0.0,
 		3.0, 11.0, 0.0,
@@ -419,7 +420,7 @@ void RigidBody::initJoints() {
 }
 
 void RigidBody::initSprings(double stiffness) {
-	springs.push_back(createSpring(0, 2, 3, 3, bodies, stiffness));
+	springs.push_back(createSpring2RB(0, 2, 3, 3, bodies, stiffness));
 }
 
 void RigidBody::initBuffers() {
@@ -478,22 +479,6 @@ void RigidBody::computeSpringForces() {
 
 		b0->setBodyForce(wrench0);
 		b1->setBodyForce(wrench1);
-
-		//double h0 = n0->x(1);
-		//double h1 = n1->x(1);
-		//double hmid = 1.0 / 2.0 * (h1 - h0) + h0;
-		//double V = muscle_density * (9.8) * hmid /2.0; // potential energy adding to each rigid body
-		//Vector3d grav; 
-		//grav << 0.0, -1.0, 0.0;
-		//VectorXd mg0, mg1 ;
-		//mg0.resize(6);
-		//mg1.resize(6);
-		//mg0.setZero(); 
-		//mg1.setZero();
-		//mg0.segment<3>(3) = b0->R.transpose() * V * grav;
-		//mg1.segment<3>(3) = b1->R.transpose() * V * grav;
-		//b0->setBodyForce(mg0);
-		//b1->setBodyForce(mg1);
 	}
 }
 
@@ -664,7 +649,6 @@ void RigidBody::computeWrapDoubleCylinderForces() {
 				bodies[dc->S->rb_id]->setBodyForce(wrench1);
 			}
 		}
-
 	}
 }
 
@@ -794,7 +778,6 @@ void RigidBody::setInequality(double h) {
 
 			for (int t = 0; t < 6; t++) {
 				C_.push_back(ETriplet(i, 6 * ib + t, -convec(t)));
-
 			}
 		}
 
@@ -853,7 +836,6 @@ void RigidBody::setInequality(double h) {
 			bodies[i]->setLinearVelocity(sol.segment<3>(6 * i + 3));
 			bodies[i]->updateTransformationMatrix(h);
 		}
-
 		C_.clear();
 		colList.clear();
 	}
@@ -885,34 +867,193 @@ void RigidBody::setEquality() {
 	program->setEqualityVector(equalvec);
 }
 
-void RigidBody::updateInertia() {
+void RigidBody::updateInertia(double h) {
+
+	if (isFEM == false) {
 	// Update the inertia matrix of two rigid bodies connected by a spring 
-	for (int i = 0; i < springs.size(); i++) {
-		int ia = springs[i]->i;
-		int ib = springs[i]->k;
+	// Using gamma matrix (3x6) material Jacobian
+		for (int i = 0; i < springs.size(); i++) {
+			int ia = springs[i]->i;
+			int ib = springs[i]->k;
 
-		auto b0 = bodies[ia];
-		auto b1 = bodies[ib];
+			auto b0 = bodies[ia];
+			auto b1 = bodies[ib];
 
-		auto n0 = b0->nodes[springs[i]->in];
-		auto n1 = b1->nodes[springs[i]->kn];
+			auto n0 = b0->nodes[springs[i]->in];
+			auto n1 = b1->nodes[springs[i]->kn];
 
-		gamma.block<3, 3>(0, 0) = vec2crossmatrix(n0->x0).transpose();
-		MatrixXd gamma_a = (b0->R * gamma);
-		gamma_k.block<3, 3>(0, 0) = vec2crossmatrix(n1->x0).transpose();
-		MatrixXd gamma_b = (b1->R * gamma_k);
+			gamma.block<3, 3>(0, 0) = vec2crossmatrix(n0->x0).transpose();
+			MatrixXd gamma_a = (b0->R * gamma);
+			gamma_k.block<3, 3>(0, 0) = vec2crossmatrix(n1->x0).transpose();
+			MatrixXd gamma_b = (b1->R * gamma_k);
 
-		MatrixXd I11 = gamma_a.transpose() * gamma_a * 1.0 / 3.0 * muscle_density;
-		MatrixXd I12 = gamma_a.transpose() * gamma_b * 1.0 / 6.0 * muscle_density;
-		MatrixXd I21 = gamma_b.transpose() * gamma_a * 1.0 / 6.0 * muscle_density;
-		MatrixXd I22 = gamma_b.transpose() * gamma_b * 1.0 / 3.0 * muscle_density;
+			MatrixXd I11 = gamma_a.transpose() * gamma_a * 1.0 / 3.0 * muscle_density;
+			MatrixXd I12 = gamma_a.transpose() * gamma_b * 1.0 / 6.0 * muscle_density;
+			MatrixXd I21 = gamma_b.transpose() * gamma_a * 1.0 / 6.0 * muscle_density;
+			MatrixXd I22 = gamma_b.transpose() * gamma_b * 1.0 / 3.0 * muscle_density;
+			
+			for (int ii = 0; ii < 6; ii++) {
+				for (int jj = 0; jj < 6; jj++) {
+					A_.push_back(ETriplet(6 * ia + ii, 6 * ia + jj, I11(ii, jj)));
+					A_.push_back(ETriplet(6 * ib + ii, 6 * ia + jj, I12(ii, jj)));
+					A_.push_back(ETriplet(6 * ib + ii, 6 * ia + jj, I21(ii, jj)));
+					A_.push_back(ETriplet(6 * ib + ii, 6 * ib + jj, I22(ii, jj)));
+				}
+			}
 
-		for (int ii = 0; ii < 6; ii++) {
-			for (int jj = 0; jj < 6; jj++) {
-				A_.push_back(ETriplet(6 * ia + ii, 6 * ia + jj, I11(ii, jj)));
-				A_.push_back(ETriplet(6 * ib + ii, 6 * ia + jj, I12(ii, jj)));
-				A_.push_back(ETriplet(6 * ib + ii, 6 * ia + jj, I21(ii, jj)));
-				A_.push_back(ETriplet(6 * ib + ii, 6 * ib + jj, I22(ii, jj)));
+			// used to compare if the material Jacobian is the same
+			//cout << "gamma_a :" << endl << gamma_a << endl;
+			//cout << "gamma_b :" << endl << gamma_b << endl;
+		}
+	}
+
+	if (isFEM == true) {
+		// Integrate inertia matrix and compute material Jacobian using finite difference with mass samples
+		// This method approximates the material Jacobian, also has some numerical errors
+
+		double epsilon = 1.0/1000.0; // any scalar works
+		
+		for (int i = 0; i < springs.size(); i++) {
+
+			if (springs[i]->type == two_end_rbs) {
+				int ia = springs[i]->i;
+				int ib = springs[i]->k;
+				auto b0 = bodies[ia];
+				auto b1 = bodies[ib];
+
+				// convert current E to phi
+				MatrixXd phi0_bracket = b0->E.log();
+				MatrixXd phi1_bracket = b1->E.log();
+
+				// current twists
+				VectorXd phi0 = crossmatrix2vec(phi0_bracket);
+				VectorXd phi1 = crossmatrix2vec(phi1_bracket);
+
+				// The approximated material Jacobian matrix of rb0, rb1
+				MatrixXd J0, J1;
+				J0.resize(3, 6);
+				J1.resize(3, 6);
+				J0.setZero();
+				J1.setZero();
+				
+				VectorXd pert;
+				pert.resize(6);
+				MatrixXd EE;
+				EE.resize(4, 4);
+				EE.setZero();
+
+				// for each component of phi(i = 0, 1, 2..,11) add a small perturbation
+				for (int k = 0; k < 6; k++) {
+					
+					pert.setZero();
+					pert(k) = 1.0 * epsilon; // change kth component
+
+					VectorXd phi0_pert = phi0 + pert; // 6x1 vector
+
+					// convert phi_pert to E_pert by integrating E by h, get a position with perturbation
+					EE.setZero();		
+					EE.block<3, 1>(0, 3) = phi0_pert.segment<3>(3);
+					EE.block<3, 3>(0, 0) = vec2crossmatrix(phi0_pert.segment<3>(0));
+					MatrixXd E_pert = b0->E * (h * EE).exp(); 
+
+					// convert phi to E_nopert, get a position with no perturbation
+					EE.setZero();
+					EE.block<3, 1>(0, 3) = phi0.segment<3>(3);
+					EE.block<3, 3>(0, 0) = vec2crossmatrix(phi0.segment<3>(0));
+					MatrixXd E_nopert = b0->E * (h * EE).exp();
+
+					// compute position of the end point p0 of spring 
+
+					Vector3d p_pert = local2world(E_pert, springs[i]->p0->x0);
+					Vector3d p_old = local2world(E_nopert, springs[i]->p0->x0);
+					J0.block(0, k, 3, 1) = 1.0 / epsilon * (p_pert - p_old) / h;
+				}
+
+				for (int k = 0; k < 6; k++) {
+
+					pert.setZero();
+					pert(k) = 1.0 * epsilon; 
+					
+					VectorXd phi1_pert = phi1 + pert; 
+					
+					EE.setZero();
+					EE.block<3, 1>(0, 3) = phi1_pert.segment<3>(3);
+					EE.block<3, 3>(0, 0) = vec2crossmatrix(phi1_pert.segment<3>(0));
+					MatrixXd E_pert = b1->E * (h * EE).exp(); 
+
+					EE.setZero();
+					EE.block<3, 1>(0, 3) = phi1.segment<3>(3);
+					EE.block<3, 3>(0, 0) = vec2crossmatrix(phi1.segment<3>(0));
+					MatrixXd E_nopert = b1->E * (h * EE).exp();
+					
+					Vector3d p_pert = local2world(E_pert, springs[i]->p1->x0);
+					Vector3d p_old = local2world(E_nopert, springs[i]->p1->x0);
+					J1.block(0, k, 3, 1) = 1.0 / epsilon * (p_pert - p_old) / h;
+				}
+
+				MatrixXd I11 = J0.transpose() * J0 * 1.0 / 3.0 * muscle_density;
+				MatrixXd I12 = J0.transpose() * J1 * 1.0 / 6.0 * muscle_density;
+				MatrixXd I21 = J1.transpose() * J0 * 1.0 / 6.0 * muscle_density;
+				MatrixXd I22 = J1.transpose() * J1 * 1.0 / 3.0 * muscle_density;
+
+				// Update the inertia matrix
+				for (int ii = 0; ii < 6; ii++) {
+					for (int jj = 0; jj < 6; jj++) {
+						A_.push_back(ETriplet(6 * ia + ii, 6 * ia + jj, I11(ii, jj)));
+						A_.push_back(ETriplet(6 * ib + ii, 6 * ia + jj, I12(ii, jj)));
+						A_.push_back(ETriplet(6 * ib + ii, 6 * ia + jj, I21(ii, jj)));
+						A_.push_back(ETriplet(6 * ib + ii, 6 * ib + jj, I22(ii, jj)));
+					}
+				}
+
+				// Used to compare if the material Jacobian is the same
+				//cout << "J0: " << endl << J0 << endl;
+				//cout << "J1: " << endl << J1 << endl;
+			}
+
+			if (springs[i]->type == one_end_fixed) {
+				int ib = springs[i]->k;
+				auto b = bodies[ib];
+
+				// convert e to phi
+				MatrixXd phi_bracket = b->E.log();
+				VectorXd phi = crossmatrix2vec(phi_bracket); // current twist
+
+				MatrixXd J;
+				J.resize(3, 6);
+				J.setZero();
+
+				// for each component of phi(k = 0, 1, 2, ..., 5) add a small perturbation
+				for (int k = 0; k < 6; k++) {
+					VectorXd pert;
+					pert.resize(6);
+					pert.setZero();
+					pert(k) = 1.0 * epsilon; 
+
+					VectorXd phi_pert = phi + pert; 
+
+					// convert phi_pert to E_pert
+					MatrixXd EE;
+					EE.resize(4, 4);
+					EE.setZero();
+
+					EE.block<3, 1>(0, 3) = phi_pert.segment<3>(3);
+					EE.block<3, 3>(0, 0) = vec2crossmatrix(phi_pert.segment<3>(0));
+					MatrixXd E_pert = b->E * (h * EE).exp(); 
+
+					EE.setZero();
+					EE.block<3, 1>(0, 3) = phi.segment<3>(3);
+					EE.block<3, 3>(0, 0) = vec2crossmatrix(phi.segment<3>(0));
+					MatrixXd E_nopert = b->E * (h * EE).exp();
+
+					// compute position of the end point of spring
+					Vector3d p_pert = local2world(E_pert, springs[i]->p1->x0);
+					Vector3d p_old = local2world(E_nopert, springs[i]->p1->x0);
+					J.block(0, i, 3, 1) = 1.0 / epsilon * (p_pert - p_old);
+				}
+
+				// update iertia ..TODO  since 2rb case is working, this one is trivial
+
 			}
 		}
 	}
@@ -921,7 +1062,7 @@ void RigidBody::updateInertia() {
 void RigidBody::setObjective(double h) {
 	// Initialize A matrix
 	A_.clear();
-	updateInertia();
+	updateInertia(h);
 
 	for (int i = 0; i < numRB; i++) {
 		bodies[i]->clearBodyForce(); // only gravity
@@ -934,7 +1075,6 @@ void RigidBody::setObjective(double h) {
 	program->setObjectiveMatrix(A);
 
 	//sparse_to_file_as_dense(A, "A");
-
 	// Initialize b vector
 
 	if (numSprings != 0) {
@@ -1480,9 +1620,6 @@ void RigidBody::drawDoubleWrapCylinders()const {
 		glVertex3f(float(p(0)), float(p(1)), float(p(2)));
 
 		glEnd();
-
-
-
 	}
 }
 
@@ -1588,7 +1725,7 @@ Vector3d RigidBody::local2world(MatrixXd E, Vector3d x) {
 	return xw;
 }
 
-shared_ptr<Spring> RigidBody::createSpring(int _i, int _k, int _in, int _kn, vector < shared_ptr<RBState> > bodies, double E)
+shared_ptr<Spring> RigidBody::createSpring2RB(int _i, int _k, int _in, int _kn, vector < shared_ptr<RBState> > bodies, double E)
 {	
 	auto s = make_shared<Spring>(bodies[_i]->nodes[_in], bodies[_k]->nodes[_kn]);
 	s->i = _i;
@@ -1596,9 +1733,28 @@ shared_ptr<Spring> RigidBody::createSpring(int _i, int _k, int _in, int _kn, vec
 	s->in = _in;
 	s->kn = _kn;
 	s->E = E;
+	s->type = two_end_rbs;
 	Vector3d x0 = local2world(bodies[_i]->E, bodies[_i]->nodes[_in]->x0) ;
 	Vector3d x1 = local2world(bodies[_k]->E, bodies[_k]->nodes[_kn]->x0) ;
 	Vector3d dx = x1 - x0;
+	s->L = dx.norm();
+	return s;
+}
+
+shared_ptr<Spring> RigidBody::createSpring1RB(int _i, int _in, Vector3d pos, vector <shared_ptr<RBState> > bodies, double E) {
+	auto p0 = make_shared<Particle>();
+	p0->x0 = pos;
+	p0->x = pos;
+
+	auto s = make_shared<Spring>(p0, bodies[_i]->nodes[_in]);
+	s->i = -1; // in world frame
+	s->k = _i;
+	s->in = -1; // no index
+	s->kn = _in;
+	s->E = E;
+	s->type = one_end_fixed;
+	Vector3d x1 = local2world(bodies[_i]->E, bodies[_i]->nodes[_in]->x0);
+	Vector3d dx = x1 - pos;
 	s->L = dx.norm();
 	return s;
 }

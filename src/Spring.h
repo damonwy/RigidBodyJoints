@@ -6,6 +6,8 @@
 
 class Particle;
 
+enum SpringType { one_end_fixed, two_end_fixed, two_end_rbs };
+
 class Spring
 {
 public:
@@ -19,6 +21,7 @@ public:
 	std::shared_ptr<Particle> p1;
 	double E;
 	double L;
+	SpringType type;
 };
 
 #endif // RIGIDBODYJOINTS_SRC_SPRING_H_
