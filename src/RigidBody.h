@@ -74,7 +74,7 @@ public:
 	std::shared_ptr<Spring> createSpring2RB(int _i, int _k, int _in, int _kn, std::vector < std::shared_ptr<RBState> > bodies, double E);
 	std::shared_ptr<Spring> createSpring1RB(int _i, int _in, Eigen::Vector3d pos, std::vector <std::shared_ptr<RBState> > bodies, double E);
 	Eigen::MatrixXd computeAdjoint(Eigen::MatrixXd E);
-	Eigen::Matrix3d vec2crossmatrix(Eigen::Vector3d a);					// repackage a vector into a cross-product matrix
+	Eigen::MatrixXd vec2crossmatrix(Eigen::VectorXd a);					// repackage a vector into a cross-product matrix
 	Eigen::VectorXd crossmatrix2vec(Eigen::MatrixXd A);
 	Eigen::Vector3d local2world(Eigen::MatrixXd E, Eigen::Vector3d x);	// compute the world position given a local position x on a rigid body
 

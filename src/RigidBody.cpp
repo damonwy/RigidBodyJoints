@@ -902,16 +902,18 @@ void RigidBody::updateInertia(double h) {
 			}
 
 			// used to compare if the material Jacobian is the same
-			//cout << "gamma_a :" << endl << gamma_a << endl;
-			//cout << "gamma_b :" << endl << gamma_b << endl;
+			/*cout << "non-fem:" << endl;
+			cout << "gamma_a :" << endl << gamma_a << endl;
+			cout << "gamma_b :" << endl << gamma_b << endl;
+			cout << "I11: " << endl << I11 << endl;
+			cout << "I12: " << endl << I12 << endl;*/
 		}
 	}
 
 	if (isFEM == true) {
 		// Integrate inertia matrix and compute material Jacobian using finite difference with mass samples
-		// This method approximates the material Jacobian, also has some numerical errors
-
-		double epsilon = 1.0/1000.0; // any scalar works
+		// This method approximates the material Jacobian
+		double epsilon = 1e-8; 
 		
 		for (int i = 0; i < springs.size(); i++) {
 
@@ -920,14 +922,6 @@ void RigidBody::updateInertia(double h) {
 				int ib = springs[i]->k;
 				auto b0 = bodies[ia];
 				auto b1 = bodies[ib];
-
-				// convert current E to phi
-				MatrixXd phi0_bracket = b0->E.log();
-				MatrixXd phi1_bracket = b1->E.log();
-
-				// current twists
-				VectorXd phi0 = crossmatrix2vec(phi0_bracket);
-				VectorXd phi1 = crossmatrix2vec(phi1_bracket);
 
 				// The approximated material Jacobian matrix of rb0, rb1
 				MatrixXd J0, J1;
@@ -938,57 +932,29 @@ void RigidBody::updateInertia(double h) {
 				
 				VectorXd pert;
 				pert.resize(6);
-				MatrixXd EE;
-				EE.resize(4, 4);
-				EE.setZero();
 
-				// for each component of phi(i = 0, 1, 2..,11) add a small perturbation
+				// for each component of phi(i = 0, 1, 2..,11) add a relative small perturbation
 				for (int k = 0; k < 6; k++) {
 					
 					pert.setZero();
 					pert(k) = 1.0 * epsilon; // change kth component
 
-					VectorXd phi0_pert = phi0 + pert; // 6x1 vector
-
-					// convert phi_pert to E_pert by integrating E by h, get a position with perturbation
-					EE.setZero();		
-					EE.block<3, 1>(0, 3) = phi0_pert.segment<3>(3);
-					EE.block<3, 3>(0, 0) = vec2crossmatrix(phi0_pert.segment<3>(0));
-					MatrixXd E_pert = b0->E * (h * EE).exp(); 
-
-					// convert phi to E_nopert, get a position with no perturbation
-					EE.setZero();
-					EE.block<3, 1>(0, 3) = phi0.segment<3>(3);
-					EE.block<3, 3>(0, 0) = vec2crossmatrix(phi0.segment<3>(0));
-					MatrixXd E_nopert = b0->E * (h * EE).exp();
-
-					// compute position of the end point p0 of spring 
-
+					MatrixXd E_pert = b0->E * vec2crossmatrix(pert).exp();
+					
+					// Compute position of the end point p0 of spring
 					Vector3d p_pert = local2world(E_pert, springs[i]->p0->x0);
-					Vector3d p_old = local2world(E_nopert, springs[i]->p0->x0);
-					J0.block(0, k, 3, 1) = 1.0 / epsilon * (p_pert - p_old) / h;
+					J0.block(0, k, 3, 1) = 1.0 / epsilon * (p_pert - springs[i]->p0->x);
 				}
 
 				for (int k = 0; k < 6; k++) {
 
 					pert.setZero();
 					pert(k) = 1.0 * epsilon; 
-					
-					VectorXd phi1_pert = phi1 + pert; 
-					
-					EE.setZero();
-					EE.block<3, 1>(0, 3) = phi1_pert.segment<3>(3);
-					EE.block<3, 3>(0, 0) = vec2crossmatrix(phi1_pert.segment<3>(0));
-					MatrixXd E_pert = b1->E * (h * EE).exp(); 
 
-					EE.setZero();
-					EE.block<3, 1>(0, 3) = phi1.segment<3>(3);
-					EE.block<3, 3>(0, 0) = vec2crossmatrix(phi1.segment<3>(0));
-					MatrixXd E_nopert = b1->E * (h * EE).exp();
-					
+					MatrixXd E_pert = b1->E * vec2crossmatrix(pert).exp();
+				
 					Vector3d p_pert = local2world(E_pert, springs[i]->p1->x0);
-					Vector3d p_old = local2world(E_nopert, springs[i]->p1->x0);
-					J1.block(0, k, 3, 1) = 1.0 / epsilon * (p_pert - p_old) / h;
+					J1.block(0, k, 3, 1) = 1.0 / epsilon * (p_pert - springs[i]->p1->x);
 				}
 
 				MatrixXd I11 = J0.transpose() * J0 * 1.0 / 3.0 * muscle_density;
@@ -1007,52 +973,38 @@ void RigidBody::updateInertia(double h) {
 				}
 
 				// Used to compare if the material Jacobian is the same
-				//cout << "J0: " << endl << J0 << endl;
-				//cout << "J1: " << endl << J1 << endl;
+				/*cout << "fem: " << endl;
+				cout << "J0: " << endl << J0 << endl;
+				cout << "J1: " << endl << J1 << endl;
+				cout << "I11: " << endl << I11 << endl;
+				cout << "I12: " << endl << I12 << endl;*/
 			}
 
 			if (springs[i]->type == one_end_fixed) {
 				int ib = springs[i]->k;
 				auto b = bodies[ib];
 
-				// convert e to phi
-				MatrixXd phi_bracket = b->E.log();
-				VectorXd phi = crossmatrix2vec(phi_bracket); // current twist
-
 				MatrixXd J;
 				J.resize(3, 6);
 				J.setZero();
 
-				// for each component of phi(k = 0, 1, 2, ..., 5) add a small perturbation
+				// for each component of phi(k = 0, 1, 2, ..., 5) add a relative small perturbation
 				for (int k = 0; k < 6; k++) {
 					VectorXd pert;
 					pert.resize(6);
 					pert.setZero();
 					pert(k) = 1.0 * epsilon; 
 
-					VectorXd phi_pert = phi + pert; 
-
-					// convert phi_pert to E_pert
-					MatrixXd EE;
-					EE.resize(4, 4);
-					EE.setZero();
-
-					EE.block<3, 1>(0, 3) = phi_pert.segment<3>(3);
-					EE.block<3, 3>(0, 0) = vec2crossmatrix(phi_pert.segment<3>(0));
-					MatrixXd E_pert = b->E * (h * EE).exp(); 
-
-					EE.setZero();
-					EE.block<3, 1>(0, 3) = phi.segment<3>(3);
-					EE.block<3, 3>(0, 0) = vec2crossmatrix(phi.segment<3>(0));
-					MatrixXd E_nopert = b->E * (h * EE).exp();
+					MatrixXd E_pert = b->E * vec2crossmatrix(pert).exp();
 
 					// compute position of the end point of spring
 					Vector3d p_pert = local2world(E_pert, springs[i]->p1->x0);
-					Vector3d p_old = local2world(E_nopert, springs[i]->p1->x0);
+					Vector3d p_old = springs[i]->p1->x;
+
 					J.block(0, i, 3, 1) = 1.0 / epsilon * (p_pert - p_old);
 				}
 
-				// update iertia ..TODO  since 2rb case is working, this one is trivial
+				// update iertia ..
 
 			}
 		}
@@ -1693,11 +1645,24 @@ void RigidBody::draw(shared_ptr<MatrixStack> MV, const shared_ptr<Program> p, co
 	p2->unbind();
 }
 
-Matrix3d RigidBody::vec2crossmatrix(Vector3d a) {
-	Matrix3d A;
-	A << 0, -a(2), a(1),
-		a(2), 0, -a(0),
-		-a(1), a(0), 0;
+MatrixXd RigidBody::vec2crossmatrix(VectorXd a) {
+	MatrixXd A;
+	if (a.size() == 3) {
+		// dim = 3
+		A.resize(3, 3);
+		A.setZero();
+		A << 0, -a(2), a(1),
+			a(2), 0, -a(0),
+			-a(1), a(0), 0;
+		
+	}
+	else {
+		// dim = 6
+		A.resize(4, 4);
+		A.setZero();
+		A.block<3, 1>(0, 3) = a.segment<3>(3);
+		A.block<3, 3>(0, 0) = vec2crossmatrix(a.segment<3>(0));
+	}
 	return A;
 }
 
