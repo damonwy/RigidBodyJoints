@@ -42,6 +42,7 @@ public:
 	Eigen::Vector3d c2;
 
 	int status;  // 1: wrap 0: no wrap
+	double mass;
 
 };
 

@@ -71,8 +71,8 @@ public:
 	
 
 	void step(double h);
-	std::shared_ptr<Spring> createSpring2RB(int _i, int _k, int _in, int _kn, std::vector < std::shared_ptr<RBState> > bodies, double E);
-	std::shared_ptr<Spring> createSpring1RB(int _i, int _in, Eigen::Vector3d pos, std::vector <std::shared_ptr<RBState> > bodies, double E);
+	std::shared_ptr<Spring> createSpring2RB(int _i, int _k, int _in, int _kn, std::vector < std::shared_ptr<RBState> > bodies, double E, double _muscle_mass);
+	std::shared_ptr<Spring> createSpring1RB(int _i, int _in, Eigen::Vector3d pos, std::vector <std::shared_ptr<RBState> > bodies, double E, double _muscle_mass);
 	Eigen::MatrixXd computeAdjoint(Eigen::MatrixXd E);
 	Eigen::MatrixXd vec2crossmatrix(Eigen::VectorXd a);					// repackage a vector into a cross-product matrix
 	Eigen::VectorXd crossmatrix2vec(Eigen::MatrixXd A);
@@ -82,6 +82,7 @@ public:
 
 	double stiffness;
 	double mass;
+	double muscle_mass;
 	double yfloor;
 	double muscle_density;
 

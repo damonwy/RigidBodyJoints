@@ -22,6 +22,7 @@ public:
 	double E;
 	double L;
 	SpringType type;
+	double mass;
 };
 
 #endif // RIGIDBODYJOINTS_SRC_SPRING_H_
