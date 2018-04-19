@@ -44,6 +44,10 @@ public:
 	int status;  // 1: wrap 0: no wrap
 	double mass;
 
+	// used to compute the arc
+	double theta_s;
+	double theta_e;
+	Eigen::Matrix3d M;
 };
 
 #endif // RIGIDBODYJOINTS_SRC_CYLINDER_H_

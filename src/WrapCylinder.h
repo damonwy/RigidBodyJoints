@@ -45,7 +45,7 @@ public:
 	void compute();
 
 	using WrapObst::getPoints;
-	Eigen::MatrixXf getPoints(int num_points);
+	Eigen::MatrixXf getPoints(int num_points, double &theta_s, double &theta_e, Eigen::Matrix3d &_M);
 };
 
 #endif

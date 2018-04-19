@@ -873,8 +873,8 @@ void RigidBody::setEquality() {
 void RigidBody::updateInertia(double h) {
 
 	if (isFEM == false) {
-	// Update the inertia matrix of two rigid bodies connected by a spring 
-	// Using gamma matrix (3x6) material Jacobian
+		// Update the inertia matrix of two rigid bodies connected by a spring 
+		// Using gamma matrix (3x6) material Jacobian
 		for (int i = 0; i < springs.size(); i++) {
 			int ia = springs[i]->i;
 			int ib = springs[i]->k;
@@ -895,7 +895,7 @@ void RigidBody::updateInertia(double h) {
 			MatrixXd I12 = gamma_a.transpose() * gamma_b * 1.0 / 6.0 * muscle_density;
 			MatrixXd I21 = gamma_b.transpose() * gamma_a * 1.0 / 6.0 * muscle_density;
 			MatrixXd I22 = gamma_b.transpose() * gamma_b * 1.0 / 3.0 * muscle_density;
-			
+
 			for (int ii = 0; ii < 6; ii++) {
 				for (int jj = 0; jj < 6; jj++) {
 					A_.push_back(ETriplet(6 * ia + ii, 6 * ia + jj, I11(ii, jj)));
@@ -904,7 +904,6 @@ void RigidBody::updateInertia(double h) {
 					A_.push_back(ETriplet(6 * ib + ii, 6 * ib + jj, I22(ii, jj)));
 				}
 			}
-
 			// used to compare if the material Jacobian is the same
 			/*cout << "non-fem:" << endl;
 			cout << "gamma_a :" << endl << gamma_a << endl;
@@ -1044,67 +1043,207 @@ void RigidBody::updateInertia(double h) {
 				int num_c2s = floor(len_c2s / dl); // the number of elements in path c2 to s
 				int num_c1c2 = numElements - num_pc1 - num_c2s;
 
-
-				// The approximated material Jacobian matrix of rb0, rb1
-				MatrixXd J0, J1;
-				J0.resize(3, 6);
-				J1.resize(3, 6);
-				J0.setZero();
-				J1.setZero();
 				double epsilon = 1e-8;
 
 				VectorXd pert;
 				pert.resize(6);
 
-				// Compute position of the end point p0 of spring
+				MatrixXd wpc_pert;
+				wpc_pert.resize(3, numWrapPoints + 1);
+				wpc.setZero();
 
-				if (c->P->rb_id == c->O->rb_id) {
-					// P->C2 in the same rigid body, only update one inertia matrix
+				// Jacobians for all the points
+				MatrixXd J;
+				J.resize(3 * numElements, 12);
+				J.setZero();
 
-					for (int s = 0; s < num_pc1 + num_c1c2; s++) {
+				for (int k = 0; k < 12; k++) {
 
+					pert.setZero();
+					pert(k) = 1.0 * epsilon; // change kth component
+					MatrixXd E_pert;
 
+					// wiggle b0 when k < 6; then b1
+					if (k < 6) {
+						E_pert = b0->E * vec2crossmatrix(pert).exp();
+					}
+					else {
+						E_pert = b1->E * vec2crossmatrix(pert).exp();
 					}
 
-					// C2->S in different rigid body, update both inertia matrices
-					for (int s = 0; s < num_c2s; s++) {
+					// Compute the position after perturbation using wrapping 
+					Vector3d Op = local2world(E_pert, c->O->x0);
+					Vector3d Pp = local2world(E_pert, c->P->x0);
+					Vector3d Sp = local2world(E_pert, c->S->x0);
 
-
-					}
-
-				}
-				else {
-					// P->C1 in different rigid body, update both inertia matrices
-
-					// Compute position of the end point P of this muscle, contribute to the first rigid body
-
-					// move the first rb
-					for (int k = 0; k < 6; k++) {
-						pert.setZero();
-						pert(k) = 1.0 * epsilon; // change kth component
-
-						MatrixXd E_pert = b0->E * vec2crossmatrix(pert).exp();
-
-						Vector3d p_pert = local2world(E_pert, c->P->x0);
-						J0.block(0, k, 3, 1) = 1.0 / epsilon * (p_pert - c->P->x);
-
-					}
-
-					// Compute position of the last point in path P->C1(not C1), contribute to the second 
-
-
-
-
-
-						// C1->S in the same rigid body, only update one inertia matrix
-
-
-
+					WrapCylinder wc(Pp.cast <float>(), Sp.cast <float>(), Op.cast <float>(), c->Z.cast <float>(), c->r);
+					wc.compute();
 					
+					if (wc.getStatus() == wrap) {
+						double theta_s, theta_e;
+						Matrix3d _M;
+
+						wpc_pert = wc.getPoints(numWrapPoints, theta_s, theta_e, _M);
+
+						double wpc_pert_length = double(wc.getLength());
+
+						Vector3d end = wpc_pert.block<3, 1>(0, 0).cast <double>();
+						Vector3d start;
+						for (int j = 0; j < numWrapPoints + 1; j++) {
+							if (isnan(wpc_pert(0, j))) {
+								start = wpc_pert.block<3, 1>(0, j - 1).cast <double>();
+								break;
+							}
+							else {
+								start = wpc_pert.block<3, 1>(0, j).cast <double>();
+							}
+						}
+						
+						double total_len = wpc_pert_length + (end - Sp).norm() + (start - Pp).norm();
+
+	
+					}
+			
+					for (int id = 0; id < numElements; id++) {
+						Vector3d p_nopert;
+						Vector3d p_pert;
+
+						
+						
+
+
+
+
+
+						// Compute the position before perturbation
+						// TODO: In fact, it should be moved outside the loop . Put it here for now
+						if (id < num_pc1 + 1) {
+							// in path PC1
+							double s = dl * id;
+
+							// compute the position using P and C1
+							p_nopert = (1 - s)*n0->x + s * c->c1;
+						}
+						else if (id > num_pc1 && id < num_pc1 + num_c2s + 1) {
+
+							// in arc C1C2
+							double dtheta = (dl * id - len_pc1) / len_c1c2 * (c->theta_e - c->theta_s); 
+							double theta = c->theta_s + dtheta;
+
+							p_nopert = c->M.transpose() * Vector3d(c->r * cos(theta), c->r * sin(theta), 0.0) + c->O->x;
+							p_nopert(2) = c->P->x(2);
+						}
+						else {
+							// in path C2S
+							double s = dl * id - len_c1c2 - len_pc1;
+
+							// compute the position using C2 and S
+							p_nopert = (1 - s)*c->c2 + s * n1->x; 
+						}
+
+						J.block(3 * id, k, 3, 1) = 1.0 / epsilon * (p_pert - p_nopert);
+
+						//Vector3d p_pert = local2world(E_pert, springs[i]->p0->x0);
+					}
+	
 				}
+
+
+				// Forget about this .......... probably wrong
+
+				//	// 1. P->C1 in different rigid body, update both inertia matrices I:12x12
+				//	
+				//	// Compute gamma_a using P
+				//	gamma.block<3, 3>(0, 0) = vec2crossmatrix(n0->x0).transpose();
+				//	MatrixXd gamma_a = (b0->R * gamma);
+				//	// Compute gamma_b using C1
+				//	// Compute the x0 of C1 in the frame of rigid body 1
+				//	Vector3d x0c1 = local2world(b1->E.inverse(), c->c1);
+				//	gamma_k.block<3, 3>(0, 0) = vec2crossmatrix(x0c1).transpose();
+				//	MatrixXd gamma_b = (b1->R * gamma_k);
+
+				//	// for each point, s is changed because the relative pos of C1 is changed
+				//	// coefficient of the sum of (1-s)^2, (1-s)*s, s^2 
+				//	MatrixXd S;
+				//	S.resize(4, 4);
+				//	S.setZero();
+
+				//	for (int ip = 0; ip < num_pc1; ip++) {
+				//	// To compute J:3x12
+				//	// Compute s = current length of p->point(ip) / len_pc1
+				//	// p->point(ip) = ip * dl;
+				//		double s = ip * dl / len_pc1;
+				//		S(0,0) += (1 - s)*(1 - s);
+				//		S(0,1) += (1 - s)*s;
+				//		S(1,1) += s * s;
+				//	}
+				//	S(1, 0) = S(0, 1);
+
+				//	// Compute the inertia matrix of P->C1
+				//	MatrixXd I11 = gamma_a.transpose() * gamma_a * S(0, 0) * muscle_density;
+				//	MatrixXd I12 = gamma_a.transpose() * gamma_b * S(0, 1) * muscle_density;
+				//	MatrixXd I21 = gamma_b.transpose() * gamma_a * S(1, 0) * muscle_density;
+				//	MatrixXd I22 = gamma_b.transpose() * gamma_b * S(1, 1) * muscle_density;
+				//	//-------------------------------------------------------------------------------
+
+				//	// 2. C1->C2 in the same rigid body, update one inertia matrix I:6x6
+				//	// Using finite difference
+
+				//	// TODO
+				//	// move the first rb
+				//	for (int k = 0; k < 6; k++) {
+				//		pert.setZero();
+				//		pert(k) = 1.0 * epsilon; // change kth component
+
+				//		MatrixXd E_pert = b0->E * vec2crossmatrix(pert).exp();
+
+				//		Vector3d p_pert = local2world(E_pert, c->P->x0);
+				//		J0.block(0, k, 3, 1) = 1.0 / epsilon * (p_pert - c->P->x);
+
+				//	}
+
+
+
+				//	//-------------------------------------------------------------------------------
+				//	// 3. C1->S in the same rigid body, update one inertia matrix I:6x6
+
+				//	// Compute gamma_a using S
+				//	gamma.block<3, 3>(0, 0) = vec2crossmatrix(n1->x0).transpose();
+				//	MatrixXd gamma_a = (b1->R * gamma);
+
+				//	// Compute gamma_b using C2
+				//	// Compute the x0 of C2 in the frame of rigid body 1
+				//	Vector3d x0c2 = local2world(b1->E.inverse(), c->c2);
+				//	gamma_k.block<3, 3>(0, 0) = vec2crossmatrix(x0c2).transpose();
+				//	MatrixXd gamma_b = (b1->R * gamma_k);
+
+
+				//	// for each point, s is changed because the relative pos of C2 is changed
+				//	// coefficient of the sum of (1-s)^2, (1-s)*s, s^2 
+				//	
+				//	S.setZero();
+
+				//	for (int ip = 0; ip < num_c2s; ip++) {
+				//		// To compute J:3x6
+
+				//		// start from S
+				//		double s = ip * dl / len_c2s;
+				//		S(0, 0) += (1 - s)*(1 - s);
+				//		S(0, 1) += (1 - s)*s;
+				//		S(1, 1) += s * s;
+				//	}
+				//	S(1, 0) = S(0, 1);
+
+				//	// Compute the inertia matrix of P->C1
+				//	MatrixXd I11 = gamma_a.transpose() * gamma_a * S(0, 0) * muscle_density;
+				//	MatrixXd I12 = gamma_a.transpose() * gamma_b * S(0, 1) * muscle_density;
+				//	MatrixXd I21 = gamma_b.transpose() * gamma_a * S(1, 0) * muscle_density;
+				//	MatrixXd I22 = gamma_b.transpose() * gamma_b * S(1, 1) * muscle_density;
+
+				//	// Compute Inertia Matrix I:6x6 for rb1
+				//	MatrixXd I3 = I11 + I12 + I21 + I22;
 			}
-			else
-			{
+			else {
 				// if the status is not wrapped, update inertia the same way as springs
 				gamma.block<3, 3>(0, 0) = vec2crossmatrix(n0->x0).transpose();
 				MatrixXd gamma_a = (b0->R * gamma);
@@ -1353,7 +1492,10 @@ void RigidBody::updateWrapCylinders() {
 		wc.compute();
 	
 		if (wc.getStatus() == wrap) {
-			wpc.block(int(3 * i), 0, 3, numWrapPoints + 1) = wc.getPoints(numWrapPoints);
+			double theta_s, theta_e;
+			Matrix3d _M;
+
+			wpc.block(int(3 * i), 0, 3, numWrapPoints + 1) = wc.getPoints(numWrapPoints, theta_s, theta_e, _M);
 			
 			wpc_stat(i) = 1;
 			wpc_length(i) = double(wc.getLength());
@@ -1371,6 +1513,11 @@ void RigidBody::updateWrapCylinders() {
 			}
 			c->c1 = start;
 			c->c2 = end;
+
+			// 
+			c->theta_e = theta_e;
+			c->theta_s = theta_s;
+			c->M = _M;
 			
 			c->l = wpc_length(i) + (end - c->S->x).norm() + (start - c->P->x).norm();
 
@@ -1421,7 +1568,7 @@ void RigidBody::updateDoubleWrapCylinders() {
 		
 		if (wdc.getStatus() == wrap) {
 			
-			
+
 			wpdc.block(3 * i, 0, 3, 3 * numWrapPoints + 1) = wdc.getPoints(numWrapPoints);
 
 			wpdc_stat(i) = 1;

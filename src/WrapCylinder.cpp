@@ -63,7 +63,7 @@ void WrapCylinder::compute()
 	// std::cout << Q.transpose() << std::endl << T.transpose() << std::endl;
 }
 
-Eigen::MatrixXf WrapCylinder::getPoints(int num_points)
+Eigen::MatrixXf WrapCylinder::getPoints(int num_points, double &theta_s, double &theta_e, Eigen::Matrix3d &_M)
 {
 	double theta_q = atan(this->point_q(1) / this->point_q(0));
 	if (this->point_q(0) < 0.0f)
@@ -75,7 +75,9 @@ Eigen::MatrixXf WrapCylinder::getPoints(int num_points)
 
 	Eigen::MatrixXf points(3, num_points + 1);
 
-	double theta_s, theta_e, z_s, z_e;
+	double z_s, z_e;
+	//theta_s, theta_e
+	_M = this->M.cast <double>();
 
 	if (theta_q < theta_t)
 	{
