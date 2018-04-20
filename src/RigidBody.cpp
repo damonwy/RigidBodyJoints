@@ -42,7 +42,7 @@ RigidBody::RigidBody() {
 	this->numRB = 3;
 	this->numJoints = 2;
 	this->numSprings = 1;
-	this->numCylinders = 0;
+	this->numCylinders = 1;
 	this->numDoubleCylinders = 0;
 	this->numWrapPoints = 20;
 	this->numFixed = 1;
@@ -139,6 +139,16 @@ RigidBody::RigidBody() {
 								0, 0, 1;
 
 	init_fixed_rb << 0; 
+	init_cyl_P << -1.0, 0.0, 0.0;
+	init_cyl_S << -1.0, 0.0, 0.0;
+	init_cyl_O << -1.5, 1.5, -0.2;
+	init_cyl_Z << 0.0, 0.0, -1.0;
+	init_cyl_r << 0.4;
+	init_cyl_O_rb << 2;
+
+	init_cyl_P_rb << 0;
+	init_cyl_S_rb << 2;
+
 	/*init_cyl_P << 0.0, 0.0, 0.0;
 	init_cyl_S << -1.0, 0.0, 0.0;
 	init_cyl_O << -1.5, 1.5, -0.2;
@@ -436,16 +446,22 @@ void RigidBody::initBuffers() {
 	posBuf.resize(nTriFaces * 9 * numRB);
 	norBuf.resize(nTriFaces * 9 * numRB);
 	eleBuf.resize(nTriFaces * 3 * numRB);
+	cout << nTriFaces * 3 * numRB << endl;
 
 	updatePosNor();
 	updateWrapCylinders();
 	updateDoubleWrapCylinders();
 
+	
+
 	for (int i = 0; i < numRB * nTriFaces; i++) {
 		for (int j = 0; j < 3; j++) {
 			eleBuf[3 * i + j] = 3 * i + j;
+			
 		}
 	}
+
+	
 }
 
 MatrixXd RigidBody::computeAdjoint(MatrixXd E) {
@@ -512,7 +528,7 @@ void RigidBody::computeWrapCylinderForces() {
 				bodies[c->P->rb_id]->setBodyForce(wrench0);
 
 				// compute the local coordinate of the contact point in cylinder	
-				Vector3d c1 = local2world(bodies[c->O->rb_id]->E.inverse(), wpc.block<3, 1>(3 * i, numWrapPoints).cast<double>());
+				Vector3d c1 = local2world(bodies[c->O->rb_id]->E.inverse(), wpc.block<3, 1>(3 * i, numWrapPoints));
 
 				gamma_k.block<3, 3>(0, 0) = vec2crossmatrix(c1).transpose();
 				VectorXd wrench1 = (bodies[c->O->rb_id]->R * gamma_k).transpose() * fpc;
@@ -537,7 +553,7 @@ void RigidBody::computeWrapCylinderForces() {
 				bodies[c->S->rb_id]->setBodyForce(wrench0);
 
 				// compute the local coordinate of the contact point in cylinder	
-				Vector3d c2 = local2world(bodies[c->O->rb_id]->E.inverse(), wpc.block<3, 1>(3 * i, 0).cast<double>());
+				Vector3d c2 = local2world(bodies[c->O->rb_id]->E.inverse(), wpc.block<3, 1>(3 * i, 0));
 
 				gamma_k.block<3, 3>(0, 0) = vec2crossmatrix(c2).transpose();
 				VectorXd wrench1 = (bodies[c->O->rb_id]->R * gamma_k).transpose() * fsc;
@@ -1026,24 +1042,39 @@ void RigidBody::updateInertia(double h) {
 			double total_length = c->L;
 			muscle_density = c->mass / total_length;
 
+			MatrixXd IM; // add to body0 and body1
+			IM.resize(12, 12);
+			IM.setZero();
+
 			if (wpc_stat[i] == 1) {
-				// if the status is wrapped, more complicated...
-				int numElements = 41;
+				
+
+				int numElements = 11;
 
 				double dm = muscle_density * total_length / numElements; // mass of each element
-
+				//cout << "dm: " << dm << endl;
 				// distance between each finite element 
 				double dl = total_length / (numElements - 1);
+				//cout << "dl: " << dl << endl;
 
 				double len_pc1 = (c->P->x - c->c1).norm();
 				double len_c2s = (c->c2 - c->S->x).norm();
 				double len_c1c2 = total_length - len_pc1 - len_c2s;
 
+				//cout << "len_pc1: " << len_pc1 << endl;
+				//cout << "len_c2s: " << len_c2s << endl;
+				//cout << "len_c1c2: " << len_c1c2 << endl;
+				cout << "total_length: " << total_length << endl;
+
 				int num_pc1 = floor(len_pc1 / dl); // the number of elements in path p to c1
 				int num_c2s = floor(len_c2s / dl); // the number of elements in path c2 to s
 				int num_c1c2 = numElements - num_pc1 - num_c2s;
 
-				double epsilon = 1e-8;
+				cout << "num_pc1: " << num_pc1 << endl;
+				cout << "num_c2s: " << num_c2s << endl;
+				cout << "num_c1c2: " << num_c1c2 << endl;
+
+				double epsilon = 1e-3;
 
 				VectorXd pert;
 				pert.resize(6);
@@ -1058,73 +1089,160 @@ void RigidBody::updateInertia(double h) {
 				J.setZero();
 
 				for (int k = 0; k < 12; k++) {
-
-					pert.setZero();
-					pert(k) = 1.0 * epsilon; // change kth component
+					cout << "k" << k << endl;
+					if (k < 6) {
+						pert.setZero();
+						pert(k) = 1.0 * epsilon; // change kth component
+					}
+					else {
+						pert.setZero();
+						pert(k - 6) = 1.0 * epsilon; // change (k-6)th component
+					}
+					
 					MatrixXd E_pert;
 
 					// wiggle b0 when k < 6; then b1
 					if (k < 6) {
 						E_pert = b0->E * vec2crossmatrix(pert).exp();
+						//cout << "E_pert: " << E_pert << endl;
+						//cout << "E_nopert" << b0->E << endl;
 					}
 					else {
 						E_pert = b1->E * vec2crossmatrix(pert).exp();
 					}
 
-					// Compute the position after perturbation using wrapping 
-					Vector3d Op = local2world(E_pert, c->O->x0);
-					Vector3d Pp = local2world(E_pert, c->P->x0);
-					Vector3d Sp = local2world(E_pert, c->S->x0);
-
-					WrapCylinder wc(Pp.cast <float>(), Sp.cast <float>(), Op.cast <float>(), c->Z.cast <float>(), c->r);
-					wc.compute();
 					
+
+					// Compute the position after perturbation using wrapping
+					Vector3d Op, Pp, Sp;
+
+					if (k < 6) {
+						// if move b0
+						Pp = local2world(E_pert, c->P->x0);
+						//cout << "P_pert : " << Pp << endl;
+						//cout << "P_0:" << local2world(b0->E, c->P->x0) << endl;
+						Sp = c->S->x;
+						if (c->O->rb_id == c->P->rb_id) {
+							// if cylinder is attached to b0, pos changes
+							Op = local2world(E_pert, c->O->x0);
+						}
+						else {
+							// if cylinder is attached to b1, pos doesn't change
+							Op = c->O->x;
+						}
+					}
+					else {
+						// if move b1
+						Pp = c->P->x;
+						Sp = local2world(E_pert, c->S->x0);
+						if (c->O->rb_id == c->P->rb_id) {
+							// if cylinder is attached to b0, pos doesn't change
+							Op = c->O->x;
+						}
+						else {
+							// if cylinder is attached to b1, pos changes
+							Op = local2world(E_pert, c->O->x0);
+						}
+					}
+						
+
+					WrapCylinder wc(Pp, Sp, Op, c->Z, c->r);
+					wc.compute();
+					double len_pc1_pert, len_c2s_pert, len_c1c2_pert, total_length_pert;
+					double theta_s_pert, theta_e_pert;
+					Matrix3d _M_pert;
+					Vector3d end, start;
+
 					if (wc.getStatus() == wrap) {
-						double theta_s, theta_e;
-						Matrix3d _M;
+						
+						wpc_pert = wc.getPoints(numWrapPoints, theta_s_pert, theta_e_pert, _M_pert);
 
-						wpc_pert = wc.getPoints(numWrapPoints, theta_s, theta_e, _M);
+						len_c1c2_pert = double(wc.getLength());
+						cout << "len_c1c2_pert: " << len_c1c2_pert << endl;
 
-						double wpc_pert_length = double(wc.getLength());
-
-						Vector3d end = wpc_pert.block<3, 1>(0, 0).cast <double>();
-						Vector3d start;
+						end = wpc_pert.block<3, 1>(0, 0);
+						
 						for (int j = 0; j < numWrapPoints + 1; j++) {
 							if (isnan(wpc_pert(0, j))) {
-								start = wpc_pert.block<3, 1>(0, j - 1).cast <double>();
+								start = wpc_pert.block<3, 1>(0, j - 1);
 								break;
 							}
 							else {
-								start = wpc_pert.block<3, 1>(0, j).cast <double>();
+								start = wpc_pert.block<3, 1>(0, j);
 							}
 						}
-						
-						double total_len = wpc_pert_length + (end - Sp).norm() + (start - Pp).norm();
+						len_c2s_pert = (end - Sp).norm();
+						len_pc1_pert = (start - Pp).norm();
+						cout << "len_c2s_pert " << len_c2s_pert << endl;
+						cout << "len_pc1_pert: " << len_pc1_pert << endl;
 
-	
+
+						total_length_pert = len_c1c2_pert + len_c2s_pert + len_pc1_pert;
+						cout << "total_length_pert: " << total_length_pert << endl;
 					}
+
+					double dl_pert = total_length_pert / (numElements - 1);
+
+
+					int num_pc1_pert = floor(len_pc1_pert / dl_pert);		// the number of elements in path p to c1
+					int num_c2s_pert = floor(len_c2s_pert / dl_pert);		// the number of elements in path c2 to s
+					int num_c1c2_pert = numElements - num_pc1_pert - num_c2s_pert;
+
+					//cout << "num_pc1_pert: " << num_pc1_pert << endl;
+					//cout << "num_c2s_pert: " << num_c2s_pert << endl;
+					//cout << "num_c1c2_pert: " << num_c1c2_pert << endl;
+
+
 			
 					for (int id = 0; id < numElements; id++) {
 						Vector3d p_nopert;
 						Vector3d p_pert;
 
+						// Compute the position after perturbation
+						if (id < num_pc1_pert) {
+							// in path PC1
+							double s = dl_pert * id;
+							cout << "s: " << s << endl;
+							// compute the position using P and C1
+							p_pert = (1 - s)*Pp + s * start;
+							cout << "Pp: " << Pp << endl;
+							cout << "C1: " << start << endl;
+							cout << "pt_pert: " << p_pert << endl;
+						}
+						else if (id > num_pc1_pert - 1 && id < num_pc1_pert + num_c1c2_pert) {
+
+							// in arc C1C2
+							double dtheta = (dl_pert * id - len_pc1_pert) / len_c1c2_pert * (theta_e_pert - theta_s_pert);
+							double theta = theta_s_pert + dtheta;
+
+							p_pert =_M_pert.transpose() * Vector3d(c->r * cos(theta), c->r * sin(theta), 0.0) + Op;
+							p_pert(2) = c->P->x(2);
+						}
+						else {
+							// in path C2S
+							double s = dl_pert * id - len_c1c2_pert - len_pc1_pert;
+
+							// compute the position using C2 and S
+							p_pert = (1 - s) * end + s * Sp;
+						}
 						
-						
-
-
-
-
-
 						// Compute the position before perturbation
+
 						// TODO: In fact, it should be moved outside the loop . Put it here for now
-						if (id < num_pc1 + 1) {
+						if (id < num_pc1) {
 							// in path PC1
 							double s = dl * id;
 
 							// compute the position using P and C1
 							p_nopert = (1 - s)*n0->x + s * c->c1;
+
+							cout << "s: " << s << endl;
+							cout << "P: " << n0->x << endl;
+							cout << "C1: " << c->c1 << endl;
+							cout << "pt_nopert: " << p_nopert << endl;
+
 						}
-						else if (id > num_pc1 && id < num_pc1 + num_c2s + 1) {
+						else if (id > num_pc1-1 && id < num_pc1 + num_c1c2) {
 
 							// in arc C1C2
 							double dtheta = (dl * id - len_pc1) / len_c1c2 * (c->theta_e - c->theta_s); 
@@ -1140,14 +1258,19 @@ void RigidBody::updateInertia(double h) {
 							// compute the position using C2 and S
 							p_nopert = (1 - s)*c->c2 + s * n1->x; 
 						}
-
+						cout << "diff: " << p_pert - p_nopert << endl;
 						J.block(3 * id, k, 3, 1) = 1.0 / epsilon * (p_pert - p_nopert);
-
-						//Vector3d p_pert = local2world(E_pert, springs[i]->p0->x0);
 					}
-	
 				}
 
+				// Compute Inertia matrix by summing up all the JTJ*mu
+				for (int t = 0; t < numElements; t++) {
+					MatrixXd Jt = J.block(3 * t, 0, 3, 12);
+					cout << "Jt" << Jt << endl;
+					MatrixXd It = Jt.transpose() * Jt * dm; // It:12x12
+					IM += It;
+				}
+				cout << "IM:" << endl << IM << endl;
 
 				// Forget about this .......... probably wrong
 
@@ -1202,8 +1325,6 @@ void RigidBody::updateInertia(double h) {
 
 				//	}
 
-
-
 				//	//-------------------------------------------------------------------------------
 				//	// 3. C1->S in the same rigid body, update one inertia matrix I:6x6
 
@@ -1244,6 +1365,8 @@ void RigidBody::updateInertia(double h) {
 				//	MatrixXd I3 = I11 + I12 + I21 + I22;
 			}
 			else {
+				cout << "not wrapped! " << endl;
+
 				// if the status is not wrapped, update inertia the same way as springs
 				gamma.block<3, 3>(0, 0) = vec2crossmatrix(n0->x0).transpose();
 				MatrixXd gamma_a = (b0->R * gamma);
@@ -1255,14 +1378,14 @@ void RigidBody::updateInertia(double h) {
 				MatrixXd I21 = gamma_b.transpose() * gamma_a * 1.0 / 6.0 * muscle_density;
 				MatrixXd I22 = gamma_b.transpose() * gamma_b * 1.0 / 3.0 * muscle_density;
 
-				for (int ii = 0; ii < 6; ii++) {
+				/*for (int ii = 0; ii < 6; ii++) {
 					for (int jj = 0; jj < 6; jj++) {
 						A_.push_back(ETriplet(6 * ia + ii, 6 * ia + jj, I11(ii, jj)));
 						A_.push_back(ETriplet(6 * ib + ii, 6 * ia + jj, I12(ii, jj)));
 						A_.push_back(ETriplet(6 * ib + ii, 6 * ia + jj, I21(ii, jj)));
 						A_.push_back(ETriplet(6 * ib + ii, 6 * ib + jj, I22(ii, jj)));
 					}
-				}
+				}*/
 			}
 		}
 	}
@@ -1488,7 +1611,7 @@ void RigidBody::updateWrapCylinders() {
 		c->P->x = local2world(bodies[c->P->rb_id]->E, c->P->x0);
 		c->S->x = local2world(bodies[c->S->rb_id]->E, c->S->x0);
 
-		WrapCylinder wc(c->P->x.cast <float>(), c->S->x.cast <float>(), c->O->x.cast <float>(), c->Z.cast <float>(),c->r);
+		WrapCylinder wc(c->P->x, c->S->x, c->O->x, c->Z,c->r);
 		wc.compute();
 	
 		if (wc.getStatus() == wrap) {
@@ -1500,15 +1623,15 @@ void RigidBody::updateWrapCylinders() {
 			wpc_stat(i) = 1;
 			wpc_length(i) = double(wc.getLength());
 			
-			Vector3d end = wpc.block<3, 1>(3 * i, 0).cast <double>();
+			Vector3d end = wpc.block<3, 1>(3 * i, 0);
 			Vector3d start;
 			for (int j = 0; j < numWrapPoints + 1; j++) {
 				if (isnan(wpc(3 * i, j))) {
-					start = wpc.block<3, 1>(3 * i, j - 1).cast <double>();
+					start = wpc.block<3, 1>(3 * i, j - 1);
 					break;
 				}
 				else {
-					start = wpc.block<3, 1>(3 * i, j).cast <double>();
+					start = wpc.block<3, 1>(3 * i, j);
 				}
 			}
 			c->c1 = start;
@@ -1555,13 +1678,13 @@ void RigidBody::updateDoubleWrapCylinders() {
 		dc->P->x = local2world(bodies[dc->P->rb_id]->E, dc->P->x0);
 		dc->S->x = local2world(bodies[dc->S->rb_id]->E, dc->S->x0);
 
-		WrapDoubleCylinder wdc(dc->P->x.cast <float>(), 
-			dc->S->x.cast <float>(), 
-			dc->U->x.cast <float>(), 
-			dc->Zu.cast <float>(), 
+		WrapDoubleCylinder wdc(dc->P->x, 
+			dc->S->x, 
+			dc->U->x, 
+			dc->Zu, 
 			dc->Ur, 
-			dc->V->x.cast <float>(), 
-			dc->Zv.cast <float>(), 
+			dc->V->x, 
+			dc->Zv, 
 			dc->Vr);
 		
 		wdc.compute();
@@ -1574,25 +1697,25 @@ void RigidBody::updateDoubleWrapCylinders() {
 			wpdc_stat(i) = 1;
 			wpdc_length(i) = double(wdc.getLength());
 
-			Vector3d start = wpdc.block<3, 1>(3 * i, 0).cast <double>();
+			Vector3d start = wpdc.block<3, 1>(3 * i, 0);
 			
 			Vector3d end;
 			
 			for (int j = 0; j < 3 * numWrapPoints + 1; j++) {
 				if (isnan(wpdc(3 * i, j))) {
-					end = wpdc.block<3, 1>(3 * i, j-1).cast <double>();
+					end = wpdc.block<3, 1>(3 * i, j-1);
 					break;
 				}
 				else {
-					end = wpdc.block<3, 1>(3 * i, j).cast <double>();
+					end = wpdc.block<3, 1>(3 * i, j);
 					
 
 				}
 			}
 			// set u1, u2, v1, v2
 			dc->u1 = start;
-			dc->u2 = wpdc.block<3, 1>(3 * i, numWrapPoints).cast<double>();
-			dc->v2 = wpdc.block<3, 1>(3 * i, 2 * numWrapPoints).cast<double>();
+			dc->u2 = wpdc.block<3, 1>(3 * i, numWrapPoints);
+			dc->v2 = wpdc.block<3, 1>(3 * i, 2 * numWrapPoints);
 			dc->v1 = end;
 
 
@@ -1720,7 +1843,7 @@ void RigidBody::drawWrapCylinders()const {
 
 
 			for (int i = 0; i < numWrapPoints + 1; i++) {
-				Vector3f p = wpc.block<3, 1>(3 * t, i);
+				Vector3f p = wpc.block<3, 1>(3 * t, i).cast<float>();
 				glVertex3f(p(0), p(1), p(2));
 			}
 		}
@@ -1784,7 +1907,7 @@ void RigidBody::drawDoubleWrapCylinders()const {
 					break;
 				}
 				else {
-					Vector3f p = wpdc.block<3, 1>(3 * t, i);
+					Vector3f p = wpdc.block<3, 1>(3 * t, i).cast<float>();
 					glVertex3f(p(0), p(1), p(2));
 				}	
 			}
@@ -1794,7 +1917,7 @@ void RigidBody::drawDoubleWrapCylinders()const {
 					break;
 				}
 				else {
-					Vector3f p = wpdc.block<3, 1>(3 * t, i);
+					Vector3f p = wpdc.block<3, 1>(3 * t, i).cast<float>();
 					glVertex3f(p(0), p(1), p(2));
 				}
 			}

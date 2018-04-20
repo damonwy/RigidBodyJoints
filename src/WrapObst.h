@@ -15,14 +15,14 @@ enum Type { none, sphere, cylinder, double_cylinder };
 class WrapObst
 {
 protected:
-	Eigen::Vector3f
+	Eigen::Vector3d
 		point_P,    // Bounding-Fixed Via Point 1
 		point_S,    // Bounding-Fixed Via Point 2
 		point_O,    // Obstacle Center Point
 		point_q,    // Obstacle Via Point 1 in Obstacle Frame
 		point_t;    // Obstacle Via Point 2 in Obstacle Frame
 
-	Eigen::MatrixXf M;  // Obstacle Coord Transformation Matrix
+	Eigen::MatrixXd M;  // Obstacle Coord Transformation Matrix
 	Status status;      // Wrapping Status
 	Type type;          // Obstacle Type
 	double path_length,  // Wrapping Path Length
@@ -30,13 +30,13 @@ protected:
 
 public:
 	// set muscle origin point
-	void setOrigin(const Eigen::Vector3f &P)
+	void setOrigin(const Eigen::Vector3d &P)
 	{
 		this->point_P = P;
 	}
 
 	// set muscle insertion point
-	void setInsertion(const Eigen::Vector3f &S)
+	void setInsertion(const Eigen::Vector3d &S)
 	{
 		this->point_S = S;
 	}
@@ -45,25 +45,25 @@ public:
 	WrapObst()
 	{
 		point_P = point_S = point_O = point_q = point_t
-			= Eigen::Vector3f(0.0f, 0.0f, 0.0f);
-		M = Eigen::MatrixXf(3, 3);
+			= Eigen::Vector3d(0.0, 0.0, 0.0);
+		M = Eigen::MatrixXd(3, 3);
 		status = empty;
-		path_length = 0.0f;
-		radius = 0.0f;
+		path_length = 0.0;
+		radius = 0.0;
 		type = none;
 	}
 
 	// constructor
-	WrapObst(const Eigen::Vector3f &P,
-		const Eigen::Vector3f &S,
-		const Eigen::Vector3f &O,
+	WrapObst(const Eigen::Vector3d &P,
+		const Eigen::Vector3d &S,
+		const Eigen::Vector3d &O,
 		const double R) :
 		point_P(P), point_S(S), point_O(O), radius(R)
 	{
-		point_q = point_t = Eigen::Vector3f(0.0f, 0.0f, 0.f);
-		M = Eigen::MatrixXf(3, 3);
+		point_q = point_t = Eigen::Vector3d(0.0, 0.0, 0.0);
+		M = Eigen::MatrixXd(3, 3);
 		status = empty;
-		path_length = 0.0f;
+		path_length = 0.0;
 		type = none;
 	}
 
@@ -85,7 +85,7 @@ public:
 		return this->radius;
 	}
 
-	Eigen::MatrixXf getPoints() {}
+	Eigen::MatrixXd getPoints() {}
 
 };
 

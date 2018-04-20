@@ -81,6 +81,7 @@ void Scene::load(const string &RESOURCE_DIR)
 void Scene::init()
 {
 	rigidbody->init();
+	
 	for (int i = 0; i < numCylinders; i++) {
 		cylinderShapes[i]->init();
 	}
@@ -97,7 +98,7 @@ void Scene::tare()
 		cylinders[i]->tare();
 	}
 
-	for (int i = 0; i < 2 * numCylinders; i++) {
+	for (int i = 0; i < 2 * numDoubleCylinders; i++) {
 		doublecylinders[i]->tare();
 	}
 }

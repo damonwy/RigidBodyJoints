@@ -19,15 +19,15 @@ public:
 		type = sphere;
 	}
 
-	void setSphereConfig(const Eigen::Vector3f &O)
+	void setSphereConfig(const Eigen::Vector3d &O)
 	{
 		this->point_O = O;
 	}
 
 	// constructor
-	WrapSphere(const Eigen::Vector3f &P,
-		const Eigen::Vector3f &S,
-		const Eigen::Vector3f &O,
+	WrapSphere(const Eigen::Vector3d &P,
+		const Eigen::Vector3d &S,
+		const Eigen::Vector3d &O,
 		const double R)
 		: WrapObst(P, S, O, R)
 	{
@@ -38,7 +38,7 @@ public:
 	void compute();
 
 	using WrapObst::getPoints;
-	Eigen::MatrixXf getPoints(int num_points);
+	Eigen::MatrixXd getPoints(int num_points);
 };
 
 #endif

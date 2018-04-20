@@ -13,7 +13,7 @@
 class WrapDoubleCylinder : public WrapObst
 {
 private:
-	Eigen::Vector3f
+	Eigen::Vector3d
 		vec_z_U,      // U Cylinder Positive z axis
 		point_U,      // U Cylinder Origin
 		vec_z_V,      // V Cylinder Positive z axis
@@ -21,7 +21,7 @@ private:
 		point_g,
 		point_h;
 
-	Eigen::MatrixXf
+	Eigen::MatrixXd
 		M_U,          // Obstacle Coord Transformation Matrix for U
 		M_V;          // Obstacle Coord Transformation Matrix for V
 
@@ -34,14 +34,14 @@ public:
 	WrapDoubleCylinder()
 	{
 		vec_z_U = point_U = vec_z_V = point_V = point_g = point_h =
-			Eigen::Vector3f(0.0f, 0.0f, 0.0f);
+			Eigen::Vector3d(0.0, 0.0, 0.0);
 		type = double_cylinder;
 	}
 
-	void setCylinderConfig(const Eigen::Vector3f &U,
-		const Eigen::Vector3f &Z_U,
-		const Eigen::Vector3f &V,
-		const Eigen::Vector3f &Z_V)
+	void setCylinderConfig(const Eigen::Vector3d &U,
+		const Eigen::Vector3d &Z_U,
+		const Eigen::Vector3d &V,
+		const Eigen::Vector3d &Z_V)
 	{
 		this->point_U = U;
 		this->vec_z_U = Z_U;
@@ -50,15 +50,15 @@ public:
 	}
 
 	// constructor
-	WrapDoubleCylinder(const Eigen::Vector3f &P,
-		const Eigen::Vector3f &S,
-		const Eigen::Vector3f &U,
-		const Eigen::Vector3f &Z_U,
-		const float R_U,
-		const Eigen::Vector3f &V,
-		const Eigen::Vector3f &Z_V,
-		const float R_V)
-		: WrapObst(P, S, Eigen::Vector3f(0.0f, 0.0f, 0.0f), 0.0f),
+	WrapDoubleCylinder(const Eigen::Vector3d &P,
+		const Eigen::Vector3d &S,
+		const Eigen::Vector3d &U,
+		const Eigen::Vector3d &Z_U,
+		const double R_U,
+		const Eigen::Vector3d &V,
+		const Eigen::Vector3d &Z_V,
+		const double R_V)
+		: WrapObst(P, S, Eigen::Vector3d(0.0, 0.0, 0.0), 0.0),
 		point_U(U), vec_z_U(Z_U), radius_U(R_U),
 		point_V(V), vec_z_V(Z_V), radius_V(R_V)
 	{
@@ -69,7 +69,7 @@ public:
 	void compute();
 
 	using WrapObst::getPoints;
-	Eigen::MatrixXf getPoints(int num_points);
+	Eigen::MatrixXd getPoints(int num_points);
 };
 
 #endif

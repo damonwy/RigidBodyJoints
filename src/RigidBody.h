@@ -162,11 +162,11 @@ public:
 	Eigen::MatrixXd gamma;
 	Eigen::MatrixXd gamma_k;
 
-	Eigen::MatrixXf wpc;
+	Eigen::MatrixXd wpc;
 	Eigen::VectorXi wpc_stat;
 	Eigen::VectorXd wpc_length;
 
-	Eigen::MatrixXf wpdc;
+	Eigen::MatrixXd wpdc;
 	Eigen::VectorXi wpdc_stat;
 	Eigen::VectorXd wpdc_length;
 	

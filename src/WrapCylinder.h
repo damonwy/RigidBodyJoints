@@ -13,28 +13,28 @@
 class WrapCylinder : public WrapObst
 {
 private:
-	Eigen::Vector3f vec_z;      // Cylinder Positive z axis
+	Eigen::Vector3d vec_z;      // Cylinder Positive z axis
 
 public:
 	// default constructor
 	WrapCylinder()
 	{
-		vec_z = Eigen::Vector3f(0.0f, 0.0f, 0.0f);
+		vec_z = Eigen::Vector3d(0.0, 0.0, 0.0);
 		type = cylinder;
 	}
 
-	void setCylinderConfig(const Eigen::Vector3f &O,
-		const Eigen::Vector3f &Z)
+	void setCylinderConfig(const Eigen::Vector3d &O,
+		const Eigen::Vector3d &Z)
 	{
 		this->point_O = O;
 		this->vec_z = Z;
 	}
 
 	// constructor
-	WrapCylinder(const Eigen::Vector3f &P,
-		const Eigen::Vector3f &S,
-		const Eigen::Vector3f &O,
-		const Eigen::Vector3f &Z,
+	WrapCylinder(const Eigen::Vector3d &P,
+		const Eigen::Vector3d &S,
+		const Eigen::Vector3d &O,
+		const Eigen::Vector3d &Z,
 		const double R)
 		: WrapObst(P, S, O, R), vec_z(Z)
 	{
@@ -45,7 +45,7 @@ public:
 	void compute();
 
 	using WrapObst::getPoints;
-	Eigen::MatrixXf getPoints(int num_points, double &theta_s, double &theta_e, Eigen::Matrix3d &_M);
+	Eigen::MatrixXd getPoints(int num_points, double &theta_s, double &theta_e, Eigen::Matrix3d &_M);
 };
 
 #endif

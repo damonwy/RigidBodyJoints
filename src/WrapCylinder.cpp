@@ -2,24 +2,24 @@
 
 void WrapCylinder::compute()
 {
-	Eigen::Vector3f OP = this->point_P - this->point_O;
+	Eigen::Vector3d OP = this->point_P - this->point_O;
 	OP = OP / OP.norm();
-	Eigen::Vector3f vec_Z = vec_z / vec_z.norm();
-	Eigen::Vector3f vec_X = vec_Z.cross(OP);
+	Eigen::Vector3d vec_Z = vec_z / vec_z.norm();
+	Eigen::Vector3d vec_X = vec_Z.cross(OP);
 	vec_X = vec_X / vec_X.norm();
-	Eigen::Vector3f vec_Y = vec_Z.cross(vec_X);
+	Eigen::Vector3d vec_Y = vec_Z.cross(vec_X);
 	vec_Y = vec_Y / vec_Y.norm();
 
 	this->M << vec_X.transpose(), vec_Y.transpose(), vec_Z.transpose();
 
-	Eigen::Vector3f p = this->M * (this->point_P - this->point_O);
-	Eigen::Vector3f s = this->M * (this->point_S - this->point_O);
+	Eigen::Vector3d p = this->M * (this->point_P - this->point_O);
+	Eigen::Vector3d s = this->M * (this->point_S - this->point_O);
 
 	double denom_q = p(0)*p(0) + p(1)*p(1);
 	double denom_t = s(0)*s(0) + s(1)*s(1);
 	double R = this->radius;
 
-	if ((denom_q - R*R < 0.0f) || (denom_t - R*R < 0.0f))
+	if ((denom_q - R*R < 0.0f) || (denom_t - R*R < 0.0))
 	{
 		this->status = inside_radius;
 	}
@@ -27,21 +27,21 @@ void WrapCylinder::compute()
 	double root_q = sqrt(denom_q - R*R);
 	double root_t = sqrt(denom_t - R*R);
 
-	Eigen::Vector3f q(0.0f, 0.0f, 0.0f);
-	Eigen::Vector3f t(0.0f, 0.0f, 0.0f);
+	Eigen::Vector3d q(0.0, 0.0, 0.0);
+	Eigen::Vector3d t(0.0, 0.0, 0.0);
 	q(0) = (p(0) * R*R + R * p(1) * root_q) / denom_q;
 	q(1) = (p(1) * R*R - R * p(0) * root_q) / denom_q;
 	t(0) = (s(0) * R*R - R * s(1) * root_t) / denom_t;
 	t(1) = (s(1) * R*R + R * s(0) * root_t) / denom_t;
 
-	if (R * (q(0) * t(1) - q(1) * t(0)) > 0.0f)
+	if (R * (q(0) * t(1) - q(1) * t(0)) > 0.0)
 	{
 		this->status = no_wrap;
 	}
 
 	this->status = wrap;
 
-	std::complex<double> qt_i = 1.0f - 0.5f *
+	std::complex<double> qt_i = 1.0 - 0.5 *
 		((q(0) - t(0)) * (q(0) - t(0))
 			+ (q(1) - t(1)) * (q(1) - t(1))) / (R*R);
 	double qt_xy = abs(R * acos(qt_i));// changed
@@ -57,27 +57,27 @@ void WrapCylinder::compute()
 	this->point_q = q;
 	this->point_t = t;
 
-	Eigen::Vector3f Q = this->M.transpose() * q + this->point_O;
-	Eigen::Vector3f T = this->M.transpose() * t + this->point_O;
+	Eigen::Vector3d Q = this->M.transpose() * q + this->point_O;
+	Eigen::Vector3d T = this->M.transpose() * t + this->point_O;
 
 	// std::cout << Q.transpose() << std::endl << T.transpose() << std::endl;
 }
 
-Eigen::MatrixXf WrapCylinder::getPoints(int num_points, double &theta_s, double &theta_e, Eigen::Matrix3d &_M)
+Eigen::MatrixXd WrapCylinder::getPoints(int num_points, double &theta_s, double &theta_e, Eigen::Matrix3d &_M)
 {
 	double theta_q = atan(this->point_q(1) / this->point_q(0));
-	if (this->point_q(0) < 0.0f)
+	if (this->point_q(0) < 0.0)
 		theta_q += PI;
 
 	double theta_t = atan(this->point_t(1) / this->point_t(0));
-	if (this->point_t(0) < 0.0f)
+	if (this->point_t(0) < 0.0)
 		theta_t += PI;
 
-	Eigen::MatrixXf points(3, num_points + 1);
+	Eigen::MatrixXd points(3, num_points + 1);
 
 	double z_s, z_e;
 	//theta_s, theta_e
-	_M = this->M.cast <double>();
+	_M = this->M;
 
 	if (theta_q < theta_t)
 	{
@@ -105,8 +105,8 @@ Eigen::MatrixXf WrapCylinder::getPoints(int num_points, double &theta_s, double 
 			break;
 		}
 
-		Eigen::Vector3f point = this->M.transpose() *
-			Eigen::Vector3f(this->radius * cos(i), this->radius * sin(i), z_i) +
+		Eigen::Vector3d point = this->M.transpose() *
+			Eigen::Vector3d(this->radius * cos(i), this->radius * sin(i), z_i) +
 			this->point_O;
 		z_i += dz;
 		points.col(col++) = point;
