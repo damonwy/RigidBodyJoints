@@ -110,7 +110,7 @@ void Scene::reset()
 		cylinders[i]->reset();
 	}
 
-	for (int i = 0; i < 2*numCylinders; i++) {
+	for (int i = 0; i < 2*numDoubleCylinders; i++) {
 		doublecylinders[i]->reset();
 	}
 }
@@ -125,6 +125,7 @@ void Scene::step()
 	if (!cylinders.empty()) {
 		for (int i = 0; i < numCylinders; i++) {
 			cylinders[i]->x = rigidbody->cylinders[i]->O->x;
+			//cylinders[i]->roty = 90;
 		}
 	}
 	if (!doublecylinders.empty()) {

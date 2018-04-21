@@ -65,6 +65,7 @@ public:
 	void drawRBnodes()const;
 	void drawSprings()const;
 	void drawWrapCylinders()const;
+	void drawWrapCylindersPerturbed()const;
 	void drawDoubleWrapCylinders()const;
 	void drawBoxBoxCol()const;
 	void draw(std::shared_ptr<MatrixStack> MV, const std::shared_ptr<Program> p, const std::shared_ptr<Program> p2, std::shared_ptr<MatrixStack> P)const;
@@ -76,11 +77,12 @@ public:
 	Eigen::MatrixXd computeAdjoint(Eigen::MatrixXd E);
 	Eigen::MatrixXd vec2crossmatrix(Eigen::VectorXd a);					// repackage a vector into a cross-product matrix
 	Eigen::VectorXd crossmatrix2vec(Eigen::MatrixXd A);
-	Eigen::Vector3d local2world(Eigen::MatrixXd E, Eigen::Vector3d x);	// compute the world position given a local position x on a rigid body
-
+	Eigen::Vector3d transform(Eigen::MatrixXd E, Eigen::Vector3d x);	// compute the world position given a local position x on a rigid body
+	Eigen::Vector3d transformVector(Eigen::MatrixXd E, Eigen::Vector3d vec);
 	tetgenio in, out;
 
 	double stiffness;
+	double epsilon;
 	double mass;
 	double muscle_mass;
 	double yfloor;
@@ -99,6 +101,7 @@ public:
 	int numCylinders;
 	int numDoubleCylinders;
 	int numWrapPoints;   
+	int numFinitePoints;
 
 	int numVars;
 	int numEqualities;
@@ -165,6 +168,10 @@ public:
 	Eigen::MatrixXd wpc;
 	Eigen::VectorXi wpc_stat;
 	Eigen::VectorXd wpc_length;
+
+	Eigen::MatrixXd wpc_pert;
+	Eigen::VectorXi wpc_stat_pert;
+	Eigen::VectorXd wpc_length_pert;
 
 	Eigen::MatrixXd wpdc;
 	Eigen::VectorXi wpdc_stat;

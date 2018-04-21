@@ -24,6 +24,11 @@ public:
 	double r; // radius
 	double L; // initial length
 	double l; // current length
+
+	double l_pc1;	// length of pc1
+	double l_c1c2;	// length of c1c2
+	double l_c2s;	// length of c2s
+
 	double stiffness;
 	std::shared_ptr<Particle> P;	// start point
 	std::shared_ptr<Particle> S;	// end point

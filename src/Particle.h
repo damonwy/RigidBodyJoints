@@ -33,7 +33,9 @@ public:
 	Eigen::Vector3d xi; // local position
 	Eigen::Vector3d xo; 
 	Eigen::Vector3d v;  // velocity
-
+	double rotx;
+	double roty;
+	double rotz;
 	
 	int rb_id;
 
@@ -41,6 +43,7 @@ public:
 	
 private:
 	const std::shared_ptr<Shape> sphere;
+	
 };
 
 #endif // RIGIDBODYJOINTS_SRC_PARTICLE_H_

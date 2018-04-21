@@ -66,7 +66,7 @@ struct RBState
 	void updatePosition();
 	void updateTransformationMatrix(double h);
 
-	Eigen::Vector3d local2world(Eigen::MatrixXd E, Eigen::Vector3d x);	// compute the world position given a local position x on a rigid body
+	Eigen::Vector3d transform(Eigen::MatrixXd E, Eigen::Vector3d x);	// compute the world position given a local position x on a rigid body
 	Eigen::Matrix3d vec2crossmatrix(Eigen::Vector3d a);					// repackage a vector into a cross-product matrix
 
 	RBState() {

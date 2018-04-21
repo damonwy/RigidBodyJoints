@@ -109,7 +109,7 @@ Matrix3d RBState::vec2crossmatrix(Vector3d a) {		// repackage a vector into a cr
 	return A;
 }
 
-Vector3d RBState::local2world(MatrixXd E, Vector3d x) {
+Vector3d RBState::transform(MatrixXd E, Vector3d x) {
 	// homo coor
 	VectorXd xh;
 	xh.resize(4);
@@ -123,7 +123,7 @@ Vector3d RBState::local2world(MatrixXd E, Vector3d x) {
 void RBState::updatePosition() {
 	for (int i = 0; i < nodes.size(); i++) {
 		nodes[i]->xo = nodes[i]->x;
-		nodes[i]->x = local2world(E, nodes[i]->x0);
+		nodes[i]->x = transform(E, nodes[i]->x0);
 	}
 }
 
