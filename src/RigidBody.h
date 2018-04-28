@@ -107,6 +107,8 @@ public:
 	int numEqualities;
 	int numInequalities;
 
+	int debug_i;
+
 	bool isBoxBoxCol;	// is box to box collision on?
 	bool isFloorCol;	// is box to floor collision on?
 	bool isFEM;			// use FEM to compute Jacobian Matrix?
@@ -202,6 +204,11 @@ public:
 	static const int HINGE_JOINT_X = 0;
 	static const int HINGE_JOINT_Y = 1;
 	static const int HINGE_JOINT_Z = 2;
+
+	Eigen::Vector3d test_o;
+	Eigen::Vector3d test_z;
+	Eigen::MatrixXd test_pts;		// 3 x numFinitePoints
+	Eigen::MatrixXd test_pts_pert;	// 3 x numFinitePoints
 
 private:
 	std::vector<unsigned int> eleBuf;

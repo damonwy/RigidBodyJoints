@@ -51,7 +51,7 @@ RigidBody::RigidBody() {
 	this->isBoxBoxCol = false;
 	this->isFloorCol = false;
 	this->isFEM = true;
-
+	this->debug_i = 6;
 	/*this->numRB = 3;
 	this->numJoints = 2;
 	this->numSprings = 1;
@@ -87,6 +87,11 @@ RigidBody::RigidBody() {
 	if (numDoubleCylinders != 0) {
 		initAfterNumDoubleCylinders();
 	}
+
+	test_pts.resize(3, numFinitePoints);
+	test_pts_pert.resize(3, numFinitePoints);
+	test_pts.setZero();
+	test_pts_pert.setZero();
 	
 	// specify model parameters after this line ------------------
 
@@ -146,7 +151,6 @@ RigidBody::RigidBody() {
 	init_cyl_Z << 0.0, 0.0, -1.0;
 	init_cyl_r << 0.4;
 	init_cyl_O_rb << 2;
-
 	init_cyl_P_rb << 0;
 	init_cyl_S_rb << 2;
 
@@ -183,7 +187,6 @@ RigidBody::RigidBody() {
 	init_dcyl_Vz << 0.0, 0.0, 1.0,
 					0.0, 0.0, 1.0;
 	init_dcyl_Vr << 0.4, 0.7;*/
-
 
 	//-------------------------------------------------------------
 	stiffness = 2;
@@ -298,7 +301,7 @@ void RigidBody::initConstant() {
 
 	this->ynormal << 0.0, 1.0, 0.0;
 	this->g << 0.0, -9.8, 0.0;
-	this->epsilon = 1.0;
+	this->epsilon = 1;
 
 	gamma.resize(3, 6);
 	gamma.block<3, 3>(0, 3) = I;
@@ -358,7 +361,6 @@ void RigidBody::initAfterNumRB() {
 	for (int i = 0; i < numRB; i++) {
 		init_R.block<3, 3>(i * 3, 0) = I;
 	}
-
 }
 
 void RigidBody::initAfterNumCylinders() {
@@ -1053,8 +1055,6 @@ void RigidBody::updateInertia(double h) {
 				length[1] = c->l_c1c2;
 				length[2] = c->l_c2s;			
 
-				//cout << "total_length: " << total_length << endl;
-
 				Vector3i count;
 				count[0] = floor(length[0] / dl);					// the number of elements in path P to C1
 				count[2] = floor(length[2] / dl);					// the number of elements in path C2 to S
@@ -1088,7 +1088,7 @@ void RigidBody::updateInertia(double h) {
 						if (c->O->rb_id == c->P->rb_id) {
 							// if cylinder is attached to b0, pos/vec changes
 							O_pert = transform(E_pert, c->O->x0);
-							Z_pert = transformVector(E_pert, c->Z);
+							Z_pert = transformVector(E_pert, transformVector(b0->E.inverse(), c->Z));
 						}
 						else {
 							// if cylinder is attached to b1, pos/vec doesn't change
@@ -1105,27 +1105,30 @@ void RigidBody::updateInertia(double h) {
 						S_pert = transform(E_pert, c->S->x0);
 
 						if (c->O->rb_id == c->P->rb_id) {
+							// if cylinder is attached to b0, pos/vec doesn't changes
 							O_pert = c->O->x;
 							Z_pert = c->Z;
 						}
 						else {
+							// if cylinder is attached to b1, pos/vec changes
 							O_pert = transform(E_pert, c->O->x0);
-							Z_pert = transformVector(E_pert, c->Z);
+							Z_pert = transformVector(E_pert, transformVector(b1->E.inverse(), c->Z));
 						}
 					}
 
-					//DEBUG
-					/*if (k == 7) {
-						cout << vec2crossmatrix(pert).exp() << endl;
-						c->O->x = O_pert;
-					}*/
+					// test if after perturbation I get the correct wrapping thing
+					if (k == debug_i) {
+						test_o = O_pert;
+						test_z = Z_pert;
+					}
 
 					WrapCylinder wc(P_pert, S_pert, O_pert, Z_pert, c->r);
 					wc.compute();
 
 					Vector3d length_pert;
-					double theta_s_pert, theta_e_pert, total_length_pert;
-					Matrix3d _M_pert;
+					double theta_s_pert, theta_e_pert;	// used to compute angle of the arc
+					double total_length_pert;			// 
+					Matrix3d _M_pert;					// some matrix used to compute the arc
 					Vector3d C1_pert, C2_pert;
 
 					if (wc.getStatus() == wrap) {
@@ -1203,6 +1206,14 @@ void RigidBody::updateInertia(double h) {
 							double s = dl * id - length[0] - length[1];
 							p_nopert = (1 - s) * c->c2 + s * c->S->x; 
 						}
+
+						// to test if I get every element right
+						if (k == debug_i) {
+							test_pts.block<3, 1>(0, id) = p_nopert;
+							test_pts_pert.block<3, 1>(0, id) = p_pert;
+						}
+					
+
 						//cout << "diff: " << 1.0 / epsilon *( p_pert - p_nopert ) << endl;
 						J.block(3 * id, k, 3, 1) = 1.0 / epsilon * (p_pert - p_nopert);
 					}
@@ -1554,8 +1565,7 @@ void RigidBody::updateDoubleWrapCylinders() {
 			wpdc_stat(i) = 1;
 			wpdc_length(i) = double(wdc.getLength());
 
-			Vector3d start = wpdc.block<3, 1>(3 * i, 0);
-			
+			Vector3d start = wpdc.block<3, 1>(3 * i, 0);	
 			Vector3d end;
 			
 			for (int j = 0; j < 3 * numWrapPoints + 1; j++) {
@@ -1565,8 +1575,6 @@ void RigidBody::updateDoubleWrapCylinders() {
 				}
 				else {
 					end = wpdc.block<3, 1>(3 * i, j);
-					
-
 				}
 			}
 			// set u1, u2, v1, v2
@@ -1574,7 +1582,6 @@ void RigidBody::updateDoubleWrapCylinders() {
 			dc->u2 = wpdc.block<3, 1>(3 * i, numWrapPoints);
 			dc->v2 = wpdc.block<3, 1>(3 * i, 2 * numWrapPoints);
 			dc->v1 = end;
-
 
 			dc->l = wpdc_length(i) + (end - dc->S->x).norm() + (start - dc->P->x).norm();
 
@@ -1735,7 +1742,7 @@ void RigidBody::drawWrapCylinders()const {
 
 void RigidBody::drawWrapCylindersPerturbed()const {
 	for (int t = 0; t < numCylinders; t++) {
-		int k = 7;
+		int k = 6;
 		auto c = cylinders[t];
 		// Draw Wrapper
 		glColor3f(1.0, 0.0, 0.0); // black
@@ -1754,6 +1761,24 @@ void RigidBody::drawWrapCylindersPerturbed()const {
 		}
 
 		glVertex3f(start(0), start(1), start(2));
+		glEnd();
+
+		// Draw Cylinder after perturbation
+		Vector3f op = test_o.cast<float>();
+		Vector3f zaxis = (test_z + test_o).cast<float>();
+		glBegin(GL_LINES);
+		glVertex3f(op(0), op(1), op(2));
+		glVertex3f(zaxis(0), zaxis(1), zaxis(2));
+		glEnd();
+
+		// Draw finite points after perturbation
+		glBegin(GL_POINTS);
+		for (int i = 0; i < numFinitePoints; i++) {
+			Vector3f pt = test_pts.block<3, 1>(0, i).cast<float>();
+			Vector3f ptp = test_pts_pert.block<3, 1>(0, i).cast<float>();
+			glVertex3f(pt(0), pt(1), pt(2));
+			glVertex3f(ptp(0), ptp(1), ptp(2));
+		}
 		glEnd();
 	}
 }
@@ -1919,8 +1944,7 @@ MatrixXd RigidBody::vec2crossmatrix(VectorXd a) {
 		A.setZero();
 		A << 0, -a(2), a(1),
 			a(2), 0, -a(0),
-			-a(1), a(0), 0;
-		
+			-a(1), a(0), 0;	
 	}
 	else {
 		// dim = 6
