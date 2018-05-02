@@ -121,6 +121,7 @@ static void init()
 	//prog->setVerbose(false);
 	
 	camera = make_shared<Camera>();
+	camera->setInitDistance(30.0f);
 
 	scene = make_shared<Scene>();
 	scene->load(RESOURCE_DIR);

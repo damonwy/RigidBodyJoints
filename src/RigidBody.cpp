@@ -45,7 +45,7 @@ RigidBody::RigidBody() {
 	this->numCylinders = 1;
 	this->numDoubleCylinders = 0;
 	this->numWrapPoints = 20;
-	this->numFinitePoints = 11;
+	this->numFinitePoints = 21;
 	this->numFixed = 1;
 	this->yfloor = 0.0;
 	this->isBoxBoxCol = false;
@@ -1037,7 +1037,8 @@ void RigidBody::updateInertia(double h) {
 			auto b0 = bodies[ia];
 			auto b1 = bodies[ib];
 
-			double total_length = c->L;
+			double total_length = c->l;
+			cout << "wrapper length: " << total_length << endl;
 			muscle_density = c->mass / total_length;
 
 			MatrixXd IM; // add to body0 and body1
@@ -1171,39 +1172,39 @@ void RigidBody::updateInertia(double h) {
 						Vector3d p_pert;
 
 						// Compute the position after perturbation
-						if (id < count_pert[0]) {
-							double s = dl_pert * id;
+						if (id <= count_pert[0]) {
+							double s = dl_pert * id / length_pert[0];
 							p_pert = (1 - s) * P_pert + s * C1_pert;
 							//cout << "pt_pert: " << p_pert << endl;
 						}
-						else if (id > count_pert[0] - 1 && id < count_pert[0] + count_pert[1]) {
+						else if (id > count_pert[0] && id < count_pert[0] + count_pert[1] - 1) {
 							double dtheta = (dl_pert * id - length_pert[0]) / length_pert[1] * (theta_e_pert - theta_s_pert);
-							double theta = theta_s_pert + dtheta;
+							double theta = theta_e_pert - dtheta;
 
-							p_pert =_M_pert.transpose() * Vector3d(c->r * cos(theta), c->r * sin(theta), 0.0) + O_pert;
+							p_pert =_M_pert.transpose() * Vector3d(c->r * cos(theta), c->r * sin(theta), 0.0) + O_pert;		
 							p_pert(2) = c->P->x(2);
 						}
 						else {
-							double s = dl_pert * id - length_pert[1] - length_pert[0];
+							double s = (dl_pert * id - length_pert[1] - length_pert[0]) / length_pert[2];
 							p_pert = (1 - s) * C2_pert + s * S_pert;
 						}
 						
 						// Compute the position before perturbation
 						// TODO: In fact, it should be moved outside the loop . Put it here for now
-						if (id < count[0]) {
-							double s = dl * id;
+						if (id <= count[0]) {
+							double s = dl * id / length[0];
 							p_nopert = (1 - s) * c->P->x + s * c->c1;
-							//cout << "pt_nopert: " << p_nopert << endl;
 						}
-						else if (id > count[0] - 1 && id < count[0] + count[1]) {
+						else if (id > count[0] && id < count[0] + count[1] - 1) {
 							double dtheta = (dl * id - length[0]) / length[1] * (c->theta_e - c->theta_s);
-							double theta = c->theta_s + dtheta;
+							double theta = c->theta_e - dtheta;
 
 							p_nopert = c->M.transpose() * Vector3d(c->r * cos(theta), c->r * sin(theta), 0.0) + c->O->x;
 							p_nopert(2) = c->P->x(2);
+
 						}
 						else {
-							double s = dl * id - length[0] - length[1];
+							double s = (dl * id - length[0] - length[1]) / length[2];
 							p_nopert = (1 - s) * c->c2 + s * c->S->x; 
 						}
 
@@ -1212,7 +1213,6 @@ void RigidBody::updateInertia(double h) {
 							test_pts.block<3, 1>(0, id) = p_nopert;
 							test_pts_pert.block<3, 1>(0, id) = p_pert;
 						}
-					
 
 						//cout << "diff: " << 1.0 / epsilon *( p_pert - p_nopert ) << endl;
 						J.block(3 * id, k, 3, 1) = 1.0 / epsilon * (p_pert - p_nopert);
@@ -1277,7 +1277,7 @@ void RigidBody::setObjective(double h) {
 	}
 
 	if (numCylinders != 0) {
-		computeWrapCylinderForces();
+		//computeWrapCylinderForces();
 	}
 
 	if (numDoubleCylinders != 0) {
@@ -1510,13 +1510,15 @@ void RigidBody::updateWrapCylinders() {
 			c->l_c2s = (end - c->S->x).norm();
 
 			c->l = c->l_c1c2 + c->l_c2s + c->l_pc1;
-			
+			cout << "l_c2s" << c->l_c2s << endl;
+			cout << "l_pc1" << c->l_pc1 << endl;
 
 			c->pdir = (c->P->x - start).normalized();
 			c->sdir = (c->S->x - end).normalized();
 
 			if (cylinders[i]->L < 0.0) {
 				cylinders[i]->L = cylinders[i]->l;
+				//cylinders[i]->L = cylinders[i]->l_c1c2;
 			}
 		}
 		else {
@@ -1525,7 +1527,7 @@ void RigidBody::updateWrapCylinders() {
 			wpc_length(i) = 0.0;
 
 			cylinders[i]->l = wpc_length(i) + (cylinders[i]->S->x - cylinders[i]->P->x).norm();
-
+			//cylinders[i]->l = wpc_length(i);
 			c->pdir = (c->P->x - c->S->x).normalized();
 			c->sdir = -c->pdir;
 
@@ -1715,7 +1717,7 @@ void RigidBody::drawWrapCylinders()const {
 		glEnd();
 
 		// Draw Wrapper Forces
-		glColor3f(1.0, 0.0, 0.0); 
+		glColor3f(0.5, 0.5, 0.0); 
 		glLineWidth(5);
 		glBegin(GL_LINES);
 		
@@ -1746,7 +1748,7 @@ void RigidBody::drawWrapCylindersPerturbed()const {
 		auto c = cylinders[t];
 		// Draw Wrapper
 		glColor3f(1.0, 0.0, 0.0); // black
-		glLineWidth(3);
+		glLineWidth(2);
 		glBegin(GL_LINE_STRIP);
 		Vector3f end = wpc_pert.block(k * 3, numWrapPoints + 2, 3, 1).cast <float>();
 		Vector3f start = wpc_pert.block(k * 3, numWrapPoints + 1, 3, 1).cast <float>();
@@ -1771,15 +1773,26 @@ void RigidBody::drawWrapCylindersPerturbed()const {
 		glVertex3f(zaxis(0), zaxis(1), zaxis(2));
 		glEnd();
 
-		// Draw finite points after perturbation
+		// Draw finite points before perturbation
+		glColor3f(0.0, 1.0, 1.0);
+		glPointSize(9.0f);
 		glBegin(GL_POINTS);
 		for (int i = 0; i < numFinitePoints; i++) {
 			Vector3f pt = test_pts.block<3, 1>(0, i).cast<float>();
-			Vector3f ptp = test_pts_pert.block<3, 1>(0, i).cast<float>();
 			glVertex3f(pt(0), pt(1), pt(2));
+		}
+		glEnd();
+
+		// Draw finite points after perturbation
+	
+		glColor3f(0.0, 0.0, 1.0);
+		glBegin(GL_POINTS);
+		for (int i = 0; i < numFinitePoints; i++) {
+			Vector3f ptp = test_pts_pert.block<3, 1>(0, i).cast<float>();
 			glVertex3f(ptp(0), ptp(1), ptp(2));
 		}
 		glEnd();
+
 	}
 }
 
