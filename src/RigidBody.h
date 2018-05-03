@@ -47,7 +47,7 @@ public:
 	void updateWrapCylinders();
 	void updateDoubleWrapCylinders();
 	void postStabilization(int &currentrow);
-	void updateInertia(double h);
+	void updateInertia();
 
 	void computeSpringForces();
 	void computeWrapCylinderForces();

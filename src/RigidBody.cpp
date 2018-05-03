@@ -52,6 +52,7 @@ RigidBody::RigidBody() {
 	this->isFloorCol = false;
 	this->isFEM = true;
 	this->debug_i = 6;
+
 	/*this->numRB = 3;
 	this->numJoints = 2;
 	this->numSprings = 1;
@@ -135,7 +136,7 @@ RigidBody::RigidBody() {
 	//muscle_density = 10.0;
 	muscle_mass = 10.0;
 
-	//init_v.segment<3>(3 * 2) << -10.0, 0.0, 0.0;
+	init_v.segment<3>(3 * 2) << -10.0, 0.0, 0.0;
 	init_p << 0.0, 14.0, 0.0,
 		3.0, 11.0, 0.0,
 		3.0, 5.0, 0.0;
@@ -301,7 +302,7 @@ void RigidBody::initConstant() {
 
 	this->ynormal << 0.0, 1.0, 0.0;
 	this->g << 0.0, -9.8, 0.0;
-	this->epsilon = 1;
+	this->epsilon = 1e-5;
 
 	gamma.resize(3, 6);
 	gamma.block<3, 3>(0, 3) = I;
@@ -888,7 +889,7 @@ void RigidBody::setEquality() {
 	program->setEqualityVector(equalvec);
 }
 
-void RigidBody::updateInertia(double h) {
+void RigidBody::updateInertia() {
 
 	if (isFEM == false) {
 		// Update the inertia matrix of two rigid bodies connected by a spring 
@@ -1038,12 +1039,14 @@ void RigidBody::updateInertia(double h) {
 			auto b1 = bodies[ib];
 
 			double total_length = c->l;
-			cout << "wrapper length: " << total_length << endl;
 			muscle_density = c->mass / total_length;
 
 			MatrixXd IM; // add to body0 and body1
 			IM.resize(12, 12);
 			IM.setZero();
+
+			double kinetic_energy = 0.0;
+
 
 			if (wpc_stat[i] == wrap) {
 
@@ -1219,14 +1222,46 @@ void RigidBody::updateInertia(double h) {
 					}
 				}
 
-				// Compute Inertia matrix by summing up all the JTJ*mu
+				
+				VectorXd phi12;
+				phi12.resize(12);
+				phi12.segment<6>(0) = b0->Phi;
+				phi12.segment<6>(6) = b1->Phi;
+
+
 				for (int t = 0; t < numElements; t++) {
+
+					// Compute Inertia matrix by summing up all the JTJ*mu
 					MatrixXd Jt = J.block(3 * t, 0, 3, 12);
-					//cout << "Jt" << Jt << endl;
+					//cout << "Jt: " << Jt << endl;
 					MatrixXd It = Jt.transpose() * Jt * dm; // It:12x12
+					//cout << "I: " << It << endl;
 					IM += It;
+
+					// Compute the total kinetic energy of a muscle
+
+					double ke = 0.5 * phi12.transpose() * IM * phi12;
+					kinetic_energy += ke;
+					cout << "ke: " << ke << endl;
 				}
+
+				cout << "KE:" << endl << kinetic_energy << endl;
 				//cout << "IM:" << endl << IM << endl;
+
+				MatrixXd I11 = IM.block<6,6>(0, 0);
+				MatrixXd I12 = IM.block<6,6>(0, 6);
+				MatrixXd I21 = IM.block<6,6>(6, 0);
+				MatrixXd I22 = IM.block<6,6>(6, 6);
+
+				for (int ii = 0; ii < 6; ii++) {
+					for (int jj = 0; jj < 6; jj++) {
+						A_.push_back(ETriplet(6 * ia + ii, 6 * ia + jj, I11(ii, jj)));
+						A_.push_back(ETriplet(6 * ib + ii, 6 * ia + jj, I12(ii, jj)));
+						A_.push_back(ETriplet(6 * ib + ii, 6 * ia + jj, I21(ii, jj)));
+						A_.push_back(ETriplet(6 * ib + ii, 6 * ib + jj, I22(ii, jj)));
+					}
+				}
+
 			}
 			else {
 
@@ -1257,7 +1292,7 @@ void RigidBody::updateInertia(double h) {
 void RigidBody::setObjective(double h) {
 	// Initialize A matrix
 	A_.clear();
-	updateInertia(h);
+	updateInertia();
 
 	for (int i = 0; i < numRB; i++) {
 		bodies[i]->clearBodyForce(); // only gravity
@@ -1273,7 +1308,7 @@ void RigidBody::setObjective(double h) {
 	// Initialize b vector
 
 	if (numSprings != 0) {
-		computeSpringForces();
+		//computeSpringForces();
 	}
 
 	if (numCylinders != 0) {
@@ -1281,7 +1316,7 @@ void RigidBody::setObjective(double h) {
 	}
 
 	if (numDoubleCylinders != 0) {
-		computeWrapDoubleCylinderForces();
+		//computeWrapDoubleCylinderForces();
 	}
 
 	MatrixXd Adense = MatrixXd(A);
@@ -1453,7 +1488,7 @@ void RigidBody::step(double h) {
 	}
 
 	updatePosNor();
-	//updateWrapCylinders();
+	updateWrapCylinders();
   	updateDoubleWrapCylinders();
 
 	for (int i = 0; i < numJoints; i++) {
@@ -1500,7 +1535,7 @@ void RigidBody::updateWrapCylinders() {
 			c->c1 = start;
 			c->c2 = end;
 
-			// 
+
 			c->theta_e = theta_e;
 			c->theta_s = theta_s;
 			c->M = _M;
@@ -1510,15 +1545,13 @@ void RigidBody::updateWrapCylinders() {
 			c->l_c2s = (end - c->S->x).norm();
 
 			c->l = c->l_c1c2 + c->l_c2s + c->l_pc1;
-			cout << "l_c2s" << c->l_c2s << endl;
-			cout << "l_pc1" << c->l_pc1 << endl;
+			
 
 			c->pdir = (c->P->x - start).normalized();
 			c->sdir = (c->S->x - end).normalized();
 
 			if (cylinders[i]->L < 0.0) {
 				cylinders[i]->L = cylinders[i]->l;
-				//cylinders[i]->L = cylinders[i]->l_c1c2;
 			}
 		}
 		else {
@@ -1527,7 +1560,6 @@ void RigidBody::updateWrapCylinders() {
 			wpc_length(i) = 0.0;
 
 			cylinders[i]->l = wpc_length(i) + (cylinders[i]->S->x - cylinders[i]->P->x).norm();
-			//cylinders[i]->l = wpc_length(i);
 			c->pdir = (c->P->x - c->S->x).normalized();
 			c->sdir = -c->pdir;
 
