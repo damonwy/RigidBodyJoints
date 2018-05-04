@@ -42,7 +42,7 @@ RigidBody::RigidBody() {
 	this->numRB = 3;
 	this->numJoints = 2;
 	this->numSprings = 1;
-	this->numCylinders = 1;
+	this->numCylinders = 0;
 	this->numDoubleCylinders = 0;
 	this->numWrapPoints = 20;
 	this->numFinitePoints = 21;
@@ -134,7 +134,7 @@ RigidBody::RigidBody() {
 	this->isFloorCol = false;*/
 
 	//muscle_density = 10.0;
-	muscle_mass = 10.0;
+	muscle_mass = 0.0;
 
 	init_v.segment<3>(3 * 2) << -10.0, 0.0, 0.0;
 	init_p << 0.0, 14.0, 0.0,
@@ -146,14 +146,14 @@ RigidBody::RigidBody() {
 								0, 0, 1;
 
 	init_fixed_rb << 0; 
-	init_cyl_P << -1.0, 0.0, 0.0;
+	/*init_cyl_P << -1.0, 0.0, 0.0;
 	init_cyl_S << -1.0, 0.0, 0.0;
 	init_cyl_O << -1.5, 1.5, -0.2;
 	init_cyl_Z << 0.0, 0.0, -1.0;
 	init_cyl_r << 0.4;
 	init_cyl_O_rb << 2;
 	init_cyl_P_rb << 0;
-	init_cyl_S_rb << 2;
+	init_cyl_S_rb << 2;*/
 
 	/*init_cyl_P << 0.0, 0.0, 0.0;
 	init_cyl_S << -1.0, 0.0, 0.0;
@@ -362,6 +362,9 @@ void RigidBody::initAfterNumRB() {
 	for (int i = 0; i < numRB; i++) {
 		init_R.block<3, 3>(i * 3, 0) = I;
 	}
+
+	Adense.resize(6 * numRB, 6 * numRB);
+	Adense.setZero();
 }
 
 void RigidBody::initAfterNumCylinders() {
@@ -582,6 +585,14 @@ void RigidBody::computeWrapCylinderForces() {
 			bodies[c->S->rb_id]->setBodyForce(wrench1);
 		}
 	}
+}
+
+void RigidBody::computeWCGravityForces() {
+	for (int i = 0; i < numCylinders; i++) {
+		auto c = cylinders[i];
+		
+	}
+
 }
 
 void RigidBody::computeWrapDoubleCylinderForces() {
@@ -918,7 +929,7 @@ void RigidBody::updateInertia() {
 			for (int ii = 0; ii < 6; ii++) {
 				for (int jj = 0; jj < 6; jj++) {
 					A_.push_back(ETriplet(6 * ia + ii, 6 * ia + jj, I11(ii, jj)));
-					A_.push_back(ETriplet(6 * ib + ii, 6 * ia + jj, I12(ii, jj)));
+					A_.push_back(ETriplet(6 * ia + ii, 6 * ia + jj, I12(ii, jj)));
 					A_.push_back(ETriplet(6 * ib + ii, 6 * ia + jj, I21(ii, jj)));
 					A_.push_back(ETriplet(6 * ib + ii, 6 * ib + jj, I22(ii, jj)));
 				}
@@ -935,6 +946,8 @@ void RigidBody::updateInertia() {
 	if (isFEM == true) {
 		// Integrate inertia matrix and compute material Jacobian using finite difference with mass samples
 		// This method approximates the material Jacobian
+		spring_pe = 0.0;
+		spring_ke = 0.0;
 
 		for (int i = 0; i < springs.size(); i++) {
 
@@ -988,11 +1001,45 @@ void RigidBody::updateInertia() {
 				for (int ii = 0; ii < 6; ii++) {
 					for (int jj = 0; jj < 6; jj++) {
 						A_.push_back(ETriplet(6 * ia + ii, 6 * ia + jj, I11(ii, jj)));
-						A_.push_back(ETriplet(6 * ib + ii, 6 * ia + jj, I12(ii, jj)));
+						A_.push_back(ETriplet(6 * ia + ii, 6 * ib + jj, I12(ii, jj)));
 						A_.push_back(ETriplet(6 * ib + ii, 6 * ia + jj, I21(ii, jj)));
 						A_.push_back(ETriplet(6 * ib + ii, 6 * ib + jj, I22(ii, jj)));
 					}
 				}
+				// Compute the total kinetic energy of a muscle
+				MatrixXd IM;
+				IM.resize(12, 12);
+				IM.setZero();
+				IM.block<6, 6>(0, 0) = I11;
+				IM.block<6, 6>(0, 6) = I12;
+				IM.block<6, 6>(6, 0) = I21;
+				IM.block<6, 6>(6, 6) = I22;
+				VectorXd PHIM;
+				PHIM.resize(12);
+				PHIM.setZero();
+				PHIM.segment<6>(0) = b0->Phi;
+				PHIM.segment<6>(6) = b1->Phi;
+
+				double ke = 0.5 * PHIM.transpose() * IM * PHIM;
+				//cout << "ke: " << ke << endl;
+
+				// Compute the total potential energy of a muscle
+				double pe = springs[i]->mass * 0.5 * g.transpose() * (springs[i]->p0->x + springs[i]->p1->x);
+				//cout << "pe: " << pe << endl;
+				spring_pe += pe;
+				spring_ke += ke;
+
+				// Add gravity force 
+				Vector3d fg = springs[i]->mass * g;
+				MatrixXd Jt;
+				Jt.resize(3, 12);
+				Jt.block<3, 6>(0, 0) = J0;
+				Jt.block<3, 6>(0, 6) = J1;
+
+				VectorXd wrench = Jt.transpose() * fg; // 12x1
+				bodies[ia]->setBodyForce(wrench.segment<6>(0));
+				bodies[ib]->setBodyForce(wrench.segment<6>(6));
+
 
 				// Used to compare if the material Jacobian is the same
 				/*cout << "fem: " << endl;
@@ -1046,6 +1093,7 @@ void RigidBody::updateInertia() {
 			IM.setZero();
 
 			double kinetic_energy = 0.0;
+			double potential_energy = 0.0;
 
 
 			if (wpc_stat[i] == wrap) {
@@ -1178,7 +1226,7 @@ void RigidBody::updateInertia() {
 						if (id <= count_pert[0]) {
 							double s = dl_pert * id / length_pert[0];
 							p_pert = (1 - s) * P_pert + s * C1_pert;
-							//cout << "pt_pert: " << p_pert << endl;
+							
 						}
 						else if (id > count_pert[0] && id < count_pert[0] + count_pert[1] - 1) {
 							double dtheta = (dl_pert * id - length_pert[0]) / length_pert[1] * (theta_e_pert - theta_s_pert);
@@ -1242,10 +1290,25 @@ void RigidBody::updateInertia() {
 
 					double ke = 0.5 * phi12.transpose() * IM * phi12;
 					kinetic_energy += ke;
-					cout << "ke: " << ke << endl;
-				}
+					//cout << "ke: " << ke << endl;
 
-				cout << "KE:" << endl << kinetic_energy << endl;
+					// Compute the total potential energy of a muscle
+					double pe = dm * g.transpose() * test_pts.block<3, 1>(0, t);
+					//cout << "pe: " << pe << endl;
+					potential_energy += pe;
+
+					// Add gravity force for each sample
+					Vector3d fg = dm * g;
+					
+					VectorXd wrench = Jt.transpose() * fg; // 12x1
+					bodies[ia]->setBodyForce(wrench.segment<6>(0));
+					bodies[ib]->setBodyForce(wrench.segment<6>(6));
+
+				}
+				double total_energy = kinetic_energy - potential_energy;
+				//cout << "PE: " << endl << potential_energy << endl;
+				//cout << "KE:" << endl << kinetic_energy << endl;
+				//cout << "E: " << endl << total_energy << endl;
 				//cout << "IM:" << endl << IM << endl;
 
 				MatrixXd I11 = IM.block<6,6>(0, 0);
@@ -1256,7 +1319,7 @@ void RigidBody::updateInertia() {
 				for (int ii = 0; ii < 6; ii++) {
 					for (int jj = 0; jj < 6; jj++) {
 						A_.push_back(ETriplet(6 * ia + ii, 6 * ia + jj, I11(ii, jj)));
-						A_.push_back(ETriplet(6 * ib + ii, 6 * ia + jj, I12(ii, jj)));
+						A_.push_back(ETriplet(6 * ia + ii, 6 * ib + jj, I12(ii, jj)));
 						A_.push_back(ETriplet(6 * ib + ii, 6 * ia + jj, I21(ii, jj)));
 						A_.push_back(ETriplet(6 * ib + ii, 6 * ib + jj, I22(ii, jj)));
 					}
@@ -1276,14 +1339,14 @@ void RigidBody::updateInertia() {
 				MatrixXd I21 = gamma_b.transpose() * gamma_a * 1.0 / 6.0 * muscle_density;
 				MatrixXd I22 = gamma_b.transpose() * gamma_b * 1.0 / 3.0 * muscle_density;
 
-				/*for (int ii = 0; ii < 6; ii++) {
+				for (int ii = 0; ii < 6; ii++) {
 					for (int jj = 0; jj < 6; jj++) {
 						A_.push_back(ETriplet(6 * ia + ii, 6 * ia + jj, I11(ii, jj)));
-						A_.push_back(ETriplet(6 * ib + ii, 6 * ia + jj, I12(ii, jj)));
+						A_.push_back(ETriplet(6 * ia + ii, 6 * ib + jj, I12(ii, jj)));
 						A_.push_back(ETriplet(6 * ib + ii, 6 * ia + jj, I21(ii, jj)));
 						A_.push_back(ETriplet(6 * ib + ii, 6 * ib + jj, I22(ii, jj)));
 					}
-				}*/
+				}
 			}
 		}
 	}
@@ -1292,7 +1355,7 @@ void RigidBody::updateInertia() {
 void RigidBody::setObjective(double h) {
 	// Initialize A matrix
 	A_.clear();
-	updateInertia();
+	
 
 	for (int i = 0; i < numRB; i++) {
 		bodies[i]->clearBodyForce(); // only gravity
@@ -1300,10 +1363,28 @@ void RigidBody::setObjective(double h) {
 			A_.push_back(ETriplet(6 * i + j, 6 * i + j, bodies[i]->M(j, j)));
 		}
 	}
+	updateInertia();
+
+	rb_ke = 0.0;
+	rb_pe = 0.0;
+
+	for (int i = 0; i < numRB; i++) {
+		double pei = bodies[i]->mass * g.transpose() * bodies[i]->p;
+		rb_pe += pei;
+
+		double kei = 0.5 * bodies[i]->Phi.transpose() * bodies[i]->M * bodies[i]->Phi;
+		rb_ke += kei;
+	}
+
+	cout << "rb_ke " << rb_ke << endl;
+	cout << "rb_pe " << rb_pe << endl;
+	double total_e = spring_ke + rb_ke - (spring_pe + rb_pe);
+	cout << "total " << total_e << endl;
+
 	A.resize(numVars, numVars);
 	A.setFromTriplets(A_.begin(), A_.end());
 	program->setObjectiveMatrix(A);
-
+	sparse_to_file_as_dense(A, "A");
 	//sparse_to_file_as_dense(A, "A");
 	// Initialize b vector
 
@@ -1319,7 +1400,7 @@ void RigidBody::setObjective(double h) {
 		//computeWrapDoubleCylinderForces();
 	}
 
-	MatrixXd Adense = MatrixXd(A);
+	Adense = MatrixXd(A);
 	MatrixXd PhiT;
 	VectorXd twists, bodyforces;
 
@@ -1338,7 +1419,12 @@ void RigidBody::setObjective(double h) {
 	}
 	
 	RHS = Adense * twists + h * (PhiT * Adense * twists + bodyforces);
-	
+	mat_to_file(Adense, "Adense");
+	vec_to_file(twists, "twists");
+	vec_to_file(bodyforces, "bodyforces");
+	mat_to_file(PhiT, "PhiT");
+	vec_to_file(RHS, "RHS");
+
 	/*
 	//only used when the inertia is unchanged during simulation
 	for (int i = 0; i < numRB; i++) {
@@ -1422,7 +1508,7 @@ void RigidBody::postStabilization(int &currentrow) {
 }
 
 void RigidBody::step(double h) {
-	
+
 	shared_ptr<QuadProgMosek> program_ = make_shared <QuadProgMosek>();
 	program = program_;
 	program_->setParamInt(MSK_IPAR_OPTIMIZER, MSK_OPTIMIZER_INTPNT);
@@ -1441,7 +1527,7 @@ void RigidBody::step(double h) {
 
 	setObjective(h);
 	setEquality();
-	
+
 	bool success = program->solve();
 	sol = program->getPrimalSolution();
 
@@ -1451,14 +1537,14 @@ void RigidBody::step(double h) {
 		bodies[i]->computeTempE(h);
 	}
 	int currentrow = 0;
-	
+
 	// To soft the joint drifting problem
-	postStabilization(currentrow);
+	//postStabilization(currentrow);
 
 	numInequalities = 0;
 	numColBoxBox = 0;
 	numColFloor = 0;
-	
+
 	if (isFloorCol == true) {
 		detectFloorCol();
 	}
@@ -1466,7 +1552,7 @@ void RigidBody::step(double h) {
 	if (isBoxBoxCol == true) {
 		detectBoxBoxCol();
 	}
-	
+
 	setInequality(h);
 	updatePosNor();
 
@@ -1481,11 +1567,29 @@ void RigidBody::step(double h) {
 	}
 	// use parameter baum = 0.1 to avoid some extreme situations, 1 is too large for this case
 	double baum = 0.1;
-	for (int i = 0; i < numRB; i++) {	
+	/*for (int i = 0; i < numRB; i++) {
 		if (i != init_fixed_rb[0]) {
-			bodies[i]->correctPosition(-baum *sol2.segment<6>(6 * i + 0), baum); 
+			bodies[i]->correctPosition(-baum *sol2.segment<6>(6 * i + 0), baum);
 		}
+	}*/
+
+	VectorXd phi_new;
+	phi_new.resize(6 * numRB);
+
+	for (int i = 0; i < numRB; i++) {
+		phi_new.segment<6>(6 * i) = sol.segment<6>(6 * i);
 	}
+
+	double KE = 0.5 * phi_new.transpose() * Adense * phi_new;
+	///cout << "RB KE: " << KE << endl;
+	double PE = 0.0;
+	for (int i = 0; i < numRB; i++) {
+		double pe = bodies[i]->mass * g.transpose() * bodies[i]->p;
+		PE += pe;
+	}
+	//cout << "RB PE: " << PE << endl;
+	//cout << "total: " << KE - PE << endl;
+	
 
 	updatePosNor();
 	updateWrapCylinders();

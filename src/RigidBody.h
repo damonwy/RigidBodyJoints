@@ -51,6 +51,7 @@ public:
 
 	void computeSpringForces();
 	void computeWrapCylinderForces();
+	void computeWCGravityForces();
 	void computeWrapDoubleCylinderForces();
 	void setJointConstraints(int &currentrow, int type);
 	void setFixedConstraints(int &currentrow);
@@ -123,6 +124,7 @@ public:
 	Eigen::SparseMatrix<double> GG;
 	std::vector<ETriplet> C_;
 	Eigen::SparseMatrix<double> C;
+	Eigen::MatrixXd Adense;
 
 	Eigen::VectorXd init_v; // used to init the linear velocity of all the rigid bodies
 	Eigen::VectorXd init_w; // ................ angular velocity ......................
@@ -179,6 +181,11 @@ public:
 	Eigen::VectorXi wpdc_stat;
 	Eigen::VectorXd wpdc_length;
 	
+	double spring_pe;
+	double spring_ke;
+	double rb_pe;
+	double rb_ke;
+
 	Eigen::MatrixXd Eij;
 
 	std::vector < std::shared_ptr<Joint> > joints;
