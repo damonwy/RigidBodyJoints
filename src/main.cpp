@@ -16,6 +16,8 @@
 #define GLM_FORCE_RADIANS
 #include <glm/glm.hpp>
 #include <glm/gtc/type_ptr.hpp>
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include "stb_image_write.h"
 
 #include "GLSL.h"
 #include "Program.h"
@@ -27,12 +29,12 @@
 
 using namespace std;
 using namespace Eigen;
-
+char pixels[4 * 1920 * 1080];
 bool keyToggles[256] = {false}; // only for English keyboards!
 
 GLFWwindow *window; // Main application window
 string RESOURCE_DIR = ""; // Where the resources are loaded from
-
+int steps = 0;
 shared_ptr<Camera> camera;
 shared_ptr<Program> prog;
 shared_ptr<Program> progSimple;
@@ -233,6 +235,7 @@ void stepperFunc()
 	while(true) {
 		if(keyToggles[(unsigned)' ']) {
 			scene->step();
+			
 		}
 		this_thread::sleep_for(chrono::microseconds(1));
 	}
@@ -253,7 +256,7 @@ int main(int argc, char **argv)
 		return -1;
 	}
 	// Create a windowed mode window and its OpenGL context.
-	window = glfwCreateWindow(640, 480, "YOUR NAME", NULL, NULL);
+	window = glfwCreateWindow(1920, 1080, "YOUR NAME", NULL, NULL);
 	if(!window) {
 		glfwTerminate();
 		return -1;
@@ -287,6 +290,14 @@ int main(int argc, char **argv)
 	while(!glfwWindowShouldClose(window)) {
 		// Render scene.
 		render();
+		char str1[5] = ".jpg";
+		char str0[10];
+		sprintf(str0, "%d", steps);
+		strcat(str0, str1);
+		glReadPixels(0, 0, (GLsizei)1920, (GLsizei)1080, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+		stbi_write_jpg(str0, 1920, 1080, 4, pixels, 100);
+		steps += 1;
+
 		// Swap front and back buffers.
 		glfwSwapBuffers(window);
 		// Poll for and process events.

@@ -48,7 +48,9 @@ public:
 	void updateDoubleWrapCylinders();
 	void postStabilization(int &currentrow);
 	void updateInertia();
-
+	void computeSpringInertia();
+	void computeSpringEnergy();
+	void computeRigidBodyEnergy();
 	void computeSpringForces();
 	void computeWrapCylinderForces();
 	void computeWCGravityForces();
@@ -60,6 +62,7 @@ public:
 	void setInequality(double h);
 	void setObjective(double h);
 
+	double getTotalEnergy();
 	void detectFloorCol();
 	void detectBoxBoxCol();
 
@@ -70,16 +73,12 @@ public:
 	void drawDoubleWrapCylinders()const;
 	void drawBoxBoxCol()const;
 	void draw(std::shared_ptr<MatrixStack> MV, const std::shared_ptr<Program> p, const std::shared_ptr<Program> p2, std::shared_ptr<MatrixStack> P)const;
-	
 
 	void step(double h);
 	std::shared_ptr<Spring> createSpring2RB(int _i, int _k, int _in, int _kn, std::vector < std::shared_ptr<RBState> > bodies, double E, double _muscle_mass);
 	std::shared_ptr<Spring> createSpring1RB(int _i, int _in, Eigen::Vector3d pos, std::vector <std::shared_ptr<RBState> > bodies, double E, double _muscle_mass);
 	Eigen::MatrixXd computeAdjoint(Eigen::MatrixXd E);
-	Eigen::MatrixXd vec2crossmatrix(Eigen::VectorXd a);					// repackage a vector into a cross-product matrix
-	Eigen::VectorXd crossmatrix2vec(Eigen::MatrixXd A);
-	Eigen::Vector3d transform(Eigen::MatrixXd E, Eigen::Vector3d x);	// compute the world position given a local position x on a rigid body
-	Eigen::Vector3d transformVector(Eigen::MatrixXd E, Eigen::Vector3d vec);
+	
 	tetgenio in, out;
 
 	double stiffness;
@@ -89,6 +88,7 @@ public:
 	double yfloor;
 	double muscle_density;
 
+	int steps;
 	int nVerts;
 	int nTriFaces;
 	int nEdges;
@@ -185,6 +185,8 @@ public:
 	double spring_ke;
 	double rb_pe;
 	double rb_ke;
+
+	double total_energy;
 
 	Eigen::MatrixXd Eij;
 
