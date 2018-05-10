@@ -1,0 +1,86 @@
+{
+	"numRB":3,
+	"numJoints": 2,
+	"numSprings": 0, 
+	"numCylinders": 1,
+	"numDoubleCylinders": 0,
+	"numWrapPoints": 20,
+	"numFinitePoints": 21,
+	"numFixed": 1,
+	"yfloor": 0.0, 
+	"isBoxBoxCol": false, 
+	"isFloorCol": false, 
+	"isFEM": true, 
+	"debug_i": 6,
+	"stiffness": 2.0,
+	"muscle_mass": 1.0,
+	"epsilon": 1e-5,
+	"isSaveImage": false,
+	"init_fixed_rb": [0],
+	"init_p": [0.0, 14.0, 0.0,
+			   3.0, 11.0, 0.0,
+			   3.0, 5.0, 0.0],
+	"save_step": 1000,
+	"baum": 0.1,
+	"isPostStable": true
+}
+
+
+	/*this->numRB = 4;
+	this->numJoints = 1;
+	this->numSprings = 1;
+	this->numFixed = 2;
+	this->yfloor = -0.0;
+	this->isBoxBoxCol = true;
+	this->isFloorCol = true;
+	init_v.segment<3>(3 * 1) << -10.0, 0.0, 0.0;
+	init_p << 0.0, 12.0, 0.0,
+	0.0, 6.0, 0.0,
+	6.0, 3.0, 1.0,
+	15.0, 7.5, 2.0;
+	init_R.block<3, 3>(9, 0) << 0, -1, 0,
+	1, 0, 0,
+	0, 0, 1;
+	init_R.block<3, 3>(6, 0) << sqrt(2)/2.0, 0, -sqrt(2) / 2.0,
+	0, 1, 0,
+	sqrt(2) / 2.0, 0, sqrt(2) / 2.0;
+	init_fixed_rb << 0, 3;
+	stiffness = 1e2;
+	*/
+
+
+	/*init_cyl_P << -1.0, 0.0, 0.0;
+	init_cyl_S << -1.0, 0.0, 0.0;
+	init_cyl_O << -1.5, 1.5, -0.2;
+	init_cyl_Z << 0.0, 0.0, -1.0;
+	init_cyl_r << 0.4;
+	init_cyl_O_rb << 2;
+	init_cyl_P_rb << 0;
+	init_cyl_S_rb << 2;*/
+
+	/*init_cyl_P << 0.0, 0.0, 0.0;
+	init_cyl_S << -1.0, 0.0, 0.0;
+	init_cyl_O << -1.5, 1.5, -0.2;
+	init_cyl_Z << 0.0, 0.0, -1.0;
+	init_cyl_r << 0.4;
+	init_cyl_O_rb << 2;
+	init_cyl_P_rb << 0;
+	init_cyl_S_rb << 2;
+	init_dcyl_P << 1.0, 3.0, 0.0,
+	1.0, 3.0, 0.0;
+	init_dcyl_P_rb << 0, 1;
+	init_dcyl_S << 1.0, -3.0, 0.0,
+	1.0, -3.0, 0.0;
+	init_dcyl_S_rb << 1, 2;
+	init_dcyl_U << 1.5, -1.0, -0.2,
+	1.5, -1.0, -0.2;
+	init_dcyl_U_rb << 0, 1;
+	init_dcyl_Uz << 0.0, 0.0, -1.0,
+	0.0, 0.0, -1.0;
+	init_dcyl_Ur << 0.4, 0.3;
+	init_dcyl_V << 1.5, 1.5, -0.2,
+	1.5, 1.5, -0.2;
+	init_dcyl_V_rb << 1, 2;
+	init_dcyl_Vz << 0.0, 0.0, 1.0,
+	0.0, 0.0, 1.0;
+	init_dcyl_Vr << 0.4, 0.7;*/

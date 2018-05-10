@@ -13,6 +13,7 @@ namespace Helper
 	Eigen::VectorXd crossmatrix2vec(Eigen::MatrixXd A);
 	Eigen::Vector3d transform(Eigen::MatrixXd E, Eigen::Vector3d x);
 	Eigen::Vector3d transformVector(Eigen::MatrixXd E, Eigen::Vector3d vec);
+	Eigen::MatrixXd computeAdjoint(Eigen::MatrixXd E);
 }
 	
 

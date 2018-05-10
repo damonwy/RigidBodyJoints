@@ -65,3 +65,15 @@ Vector3d Helper::transformVector(MatrixXd E, Vector3d vec) {
 	Vector3d xw = (E * xh).segment<3>(0);
 	return xw;
 }
+
+MatrixXd Helper::computeAdjoint(MatrixXd E) {
+	Vector3d p = E.block<3, 1>(0, 3);
+	Matrix3d R = E.block<3, 3>(0, 0);
+	MatrixXd Ad;
+	Ad.resize(6, 6);
+	Ad.setZero();
+	Ad.block<3, 3>(0, 0) = R;
+	Ad.block<3, 3>(3, 3) = R;
+	Ad.block<3, 3>(3, 0) = vec2crossmatrix(p)*R;
+	return Ad;
+}

@@ -124,11 +124,7 @@ void Scene::step()
 	// move the cylinders
 	if (!cylinders.empty()) {
 		for (int i = 0; i < numCylinders; i++) {
-			
 			cylinders[i]->x = rigidbody->cylinders[i]->O->x;
-
-			cout << "cylinder -> O -> x: " << cylinders[i]->x << endl;
-			//cylinders[i]->roty = 90;
 		}
 	}
 	if (!doublecylinders.empty()) {

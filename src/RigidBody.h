@@ -11,7 +11,7 @@
 #include <Eigen/Dense>
 #include <Eigen/Sparse>
 #include <Eigen/SparseLU>
-
+#include <json.hpp>
 
 class MatrixStack;
 class Program;
@@ -34,7 +34,6 @@ public:
 	void initAfterNumRB();
 	void initAfterNumCylinders();
 	void initAfterNumDoubleCylinders();
-	void initConstant();
 	void initRBShape();
 	void initJoints();
 	void initSprings(double stiffness);
@@ -48,9 +47,11 @@ public:
 	void updateDoubleWrapCylinders();
 	void postStabilization(int &currentrow);
 	void updateInertia();
-	void computeSpringInertia();
+
 	void computeSpringEnergy();
 	void computeRigidBodyEnergy();
+	void computeCylinderEnergy();
+
 	void computeSpringForces();
 	void computeWrapCylinderForces();
 	void computeWCGravityForces();
@@ -62,7 +63,6 @@ public:
 	void setInequality(double h);
 	void setObjective(double h);
 
-	double getTotalEnergy();
 	void detectFloorCol();
 	void detectBoxBoxCol();
 
@@ -74,11 +74,11 @@ public:
 	void drawBoxBoxCol()const;
 	void draw(std::shared_ptr<MatrixStack> MV, const std::shared_ptr<Program> p, const std::shared_ptr<Program> p2, std::shared_ptr<MatrixStack> P)const;
 
+	void saveData(int save_step);
+
 	void step(double h);
 	std::shared_ptr<Spring> createSpring2RB(int _i, int _k, int _in, int _kn, std::vector < std::shared_ptr<RBState> > bodies, double E, double _muscle_mass);
 	std::shared_ptr<Spring> createSpring1RB(int _i, int _in, Eigen::Vector3d pos, std::vector <std::shared_ptr<RBState> > bodies, double E, double _muscle_mass);
-	Eigen::MatrixXd computeAdjoint(Eigen::MatrixXd E);
-	
 	tetgenio in, out;
 
 	double stiffness;
@@ -88,7 +88,6 @@ public:
 	double yfloor;
 	double muscle_density;
 
-	int steps;
 	int nVerts;
 	int nTriFaces;
 	int nEdges;
@@ -101,7 +100,7 @@ public:
 	int numSprings;
 	int numCylinders;
 	int numDoubleCylinders;
-	int numWrapPoints;   
+	int numWrapPoints;
 	int numFinitePoints;
 
 	int numVars;
@@ -114,6 +113,7 @@ public:
 	bool isFloorCol;	// is box to floor collision on?
 	bool isFEM;			// use FEM to compute Jacobian Matrix?
 
+	nlohmann::json js;
 	Eigen::Vector3d dimensions;
 
 	Eigen::Vector3d ynormal;
@@ -134,8 +134,8 @@ public:
 	Eigen::VectorXd init_cyl_P; // in local frame
 	Eigen::VectorXd init_cyl_S; // ...
 	Eigen::VectorXd init_cyl_O; // ...
-	Eigen::VectorXd init_cyl_Z; 
-	Eigen::VectorXd init_cyl_r; 
+	Eigen::VectorXd init_cyl_Z;
+	Eigen::VectorXd init_cyl_r;
 	Eigen::VectorXi init_cyl_O_rb;
 	Eigen::VectorXi init_cyl_P_rb;
 	Eigen::VectorXi init_cyl_S_rb;
@@ -145,7 +145,7 @@ public:
 	Eigen::VectorXi init_dcyl_P_rb;
 	Eigen::VectorXi init_dcyl_S_rb;
 
-	Eigen::VectorXd init_dcyl_U; 
+	Eigen::VectorXd init_dcyl_U;
 	Eigen::VectorXd init_dcyl_Uz;
 	Eigen::VectorXd init_dcyl_Ur;
 	Eigen::VectorXi init_dcyl_U_rb;
@@ -180,15 +180,21 @@ public:
 	Eigen::MatrixXd wpdc;
 	Eigen::VectorXi wpdc_stat;
 	Eigen::VectorXd wpdc_length;
-	
+
 	double spring_pe;
 	double spring_ke;
 	double rb_pe;
 	double rb_ke;
+	double cylinder_pe;
+	double cylinder_ke;
 
-	double total_energy;
+	std::vector < double > K;
+	std::vector < double > V;
+	std::vector < double > T;
+	int steps;
 
 	Eigen::MatrixXd Eij;
+	
 
 	std::vector < std::shared_ptr<Joint> > joints;
 	std::vector < std::shared_ptr<RBState> > bodies;
@@ -224,7 +230,7 @@ private:
 	std::vector<float> posBuf;
 	std::vector<float> norBuf;
 	std::vector<float> texBuf;
-	
+
 	unsigned eleBufID;
 	unsigned posBufID;
 	unsigned norBufID;

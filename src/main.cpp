@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <iostream>
 #include <vector>
+#include <fstream>
 
 #ifndef _GLIBCXX_USE_NANOSLEEP
 #define _GLIBCXX_USE_NANOSLEEP
@@ -13,11 +14,15 @@
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
 
+
 #define GLM_FORCE_RADIANS
 #include <glm/glm.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
+
+#include <json.hpp>
+
 
 #include "GLSL.h"
 #include "Program.h"
@@ -26,6 +31,10 @@
 #include "Shape.h"
 #include "Scene.h"
 #include "RigidBody.h"
+
+
+// for convenience
+using json = nlohmann::json;
 
 using namespace std;
 using namespace Eigen;
@@ -243,6 +252,13 @@ void stepperFunc()
 
 int main(int argc, char **argv)
 {
+	//read a JSON file
+
+	ifstream i("input.json");
+	json j;
+	i >> j;
+	i.close();
+
 	if(argc < 2) {
 		cout << "Please specify the resource directory." << endl;
 		return 0;
@@ -290,12 +306,15 @@ int main(int argc, char **argv)
 	while(!glfwWindowShouldClose(window)) {
 		// Render scene.
 		render();
-		char str1[5] = ".jpg";
-		char str0[10];
-		sprintf(str0, "%d", steps);
-		strcat(str0, str1);
-		glReadPixels(0, 0, (GLsizei)1920, (GLsizei)1080, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
-		stbi_write_jpg(str0, 1920, 1080, 4, pixels, 100);
+		if (j["isSaveImage"]) {
+			char str1[5] = ".jpg";
+			char str0[10];
+			sprintf(str0, "%d", steps);
+			strcat(str0, str1);
+			glReadPixels(0, 0, (GLsizei)1920, (GLsizei)1080, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+			stbi_write_jpg(str0, 1920, 1080, 4, pixels, 100);
+		}
+		
 		steps += 1;
 
 		// Swap front and back buffers.
