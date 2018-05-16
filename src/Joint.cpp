@@ -18,7 +18,6 @@ using namespace Eigen;
 
 typedef Eigen::Triplet<double> ETriplet;
 
-
 Joint::Joint() {
 	Eij.resize(4, 4);
 	Ejk.resize(4, 4);

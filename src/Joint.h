@@ -40,7 +40,6 @@ struct Joint {
 	Eigen::MatrixXd Ejk;   // k w.r.t j
 	Eigen::MatrixXd Gk;	   // Used to constraint Phi_k
 
-
 	Eigen::MatrixXd computeAdjoint(Eigen::Matrix4d E);
 	Eigen::Matrix3d vec2crossmatrix(Eigen::Vector3d a);
 	void computeEjk(const std::vector< std::shared_ptr<RBState> > bodies);

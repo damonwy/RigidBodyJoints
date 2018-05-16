@@ -25,6 +25,14 @@ class DoubleCylinder;
 class WrapCylinder;
 class WrapDoubleCylinder;
 
+typedef Eigen::Matrix<double, 6, 1> Vector6d;
+typedef Eigen::Matrix<double, 4, 4> Matrix4d;
+typedef Eigen::Matrix<double, 6, 6> Matrix6d;
+typedef Eigen::Matrix<double, 12, 12> Matrix12d;
+typedef Eigen::Matrix<double, 3, 6> Matrix3x6d;
+typedef Eigen::Matrix<double, 6, 3> Matrix6x3d;
+typedef Eigen::Matrix<double, 12, 1> Vector12d;
+typedef Eigen::Matrix<double, 3, 12> Matrix3x12d;
 typedef Eigen::Triplet<double> ETriplet;
 
 class RigidBody {
@@ -115,16 +123,17 @@ public:
 
 	nlohmann::json js;
 	Eigen::Vector3d dimensions;
-
 	Eigen::Vector3d ynormal;
 	std::shared_ptr<QuadProg> program;
 	std::vector<ETriplet> A_;
 	Eigen::SparseMatrix<double> A;
+	Eigen::SparseMatrix<double> Ao;
 	std::vector<ETriplet> G_;
 	Eigen::SparseMatrix<double> GG;
 	std::vector<ETriplet> C_;
 	Eigen::SparseMatrix<double> C;
 	Eigen::MatrixXd Adense;
+	Eigen::MatrixXd Aold;
 
 	Eigen::VectorXd init_v; // used to init the linear velocity of all the rigid bodies
 	Eigen::VectorXd init_w; // ................ angular velocity ......................
@@ -195,7 +204,6 @@ public:
 
 	Eigen::MatrixXd Eij;
 	
-
 	std::vector < std::shared_ptr<Joint> > joints;
 	std::vector < std::shared_ptr<RBState> > bodies;
 	std::vector < std::shared_ptr<Contacts> > contacts;

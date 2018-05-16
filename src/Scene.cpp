@@ -26,7 +26,7 @@ Scene::~Scene()
 void Scene::load(const string &RESOURCE_DIR)
 {
 	// Units: meters, kilograms, seconds
-	h = 1e-3;
+	h = 1e-2;
 	
 	grav << 0.0, -9.8, 0.0;
 	

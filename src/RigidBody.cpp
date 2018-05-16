@@ -52,7 +52,6 @@ RigidBody::RigidBody():
 {
 	//read a JSON file
 	ifstream i("input.json");
-	///json j;
 	i >> js;
 	i.close();
 
@@ -117,10 +116,10 @@ RigidBody::RigidBody():
 	//init_p << 0.0, 14.0, 0.0,
 	//	3.0, 11.0, 0.0,
 	//	6.0, 8.0, 0.0;
+
 	init_p << 0.0, 14.0, 0.0,
 		6.0, 14.0, 0.0;
 		
-
 	init_R.block<3, 3>(0, 0) << 0, -1, 0,
 		1, 0, 0,
 		0, 0, 1;
@@ -131,14 +130,14 @@ RigidBody::RigidBody():
 
 	init_fixed_rb << 0;
 
-	//init_cyl_P << 1.0, 0.0, 0.0;
-	//init_cyl_S << 1.0, -2.0, 0.0;
-	//init_cyl_O << 1.5, -1.5, -0.2;
-	//init_cyl_Z << 0.0, 0.0, 1.0;
-	//init_cyl_r << 0.4;
-	//init_cyl_O_rb << 2;
-	//init_cyl_P_rb << 1;
-	//init_cyl_S_rb << 2;
+	/*init_cyl_P << 1.0, 0.0, 0.0;
+	init_cyl_S << 1.0, -2.0, 0.0;
+	init_cyl_O << 1.5, -1.5, -0.2;
+	init_cyl_Z << 0.0, 0.0, 1.0;
+	init_cyl_r << 0.4;
+	init_cyl_O_rb << 1;
+	init_cyl_P_rb << 0;
+	init_cyl_S_rb << 1;*/
 	
 	//nlohmann::from_json(j["init_fixed_rb"], init_fixed_rb);
 
@@ -609,9 +608,7 @@ void RigidBody::computeWrapDoubleCylinderForces() {
 }
 
 void RigidBody::setJointConstraints(int &currentrow, int type) {
-	MatrixXd Gi, Gk;
-	Gi.resize(6, 6);
-	Gk.resize(6, 6);
+	Matrix6d Gi, Gk;
 
 	for (int i = 0; i < numJoints; i++) {
 		Gi = joints[i]->computeAdjoint(joints[i]->Eij.inverse());
@@ -837,15 +834,13 @@ void RigidBody::updateInertia() {
 			MatrixXd gamma_a = (b0->R * gamma);
 			gamma_k.block<3, 3>(0, 0) = vec2crossmatrix(n1->x0).transpose();
 			MatrixXd gamma_b = (b1->R * gamma_k);
-			MatrixXd IM;
-			IM.resize(12, 12);
-			IM.setZero();
 
+			Matrix12d IM;
+			IM.setZero();
 
 			// Add gravity force 
 				Vector3d fg = springs[i]->mass * g/numFinitePoints;
-				MatrixXd Jt;
-				Jt.resize(3, 12);
+				Matrix3x12d Jt;
 				Jt.block<3, 6>(0, 0) = gamma_a;
 				Jt.block<3, 6>(0, 6) = gamma_b;
 
@@ -854,9 +849,7 @@ void RigidBody::updateInertia() {
 				//bodies[ib]->setBodyForce(wrench.segment<6>(6));
 				double dm = springs[i]->mass / numFinitePoints;
 
-
-				VectorXd phi12;
-				phi12.resize(12);
+				Vector12d phi12;
 				phi12.segment<6>(0) = b0->Phi;
 				phi12.segment<6>(6) = b1->Phi;
 
@@ -880,17 +873,11 @@ void RigidBody::updateInertia() {
 			MatrixXd I12 = gamma_a.transpose() * gamma_b * 1.0 / 6.0 * muscle_density;
 			MatrixXd I21 = gamma_b.transpose() * gamma_a * 1.0 / 6.0 * muscle_density;
 			MatrixXd I22 = gamma_b.transpose() * gamma_b * 1.0 / 3.0 * muscle_density;*/
-			/*MatrixXd I11 = gamma_a.transpose() * gamma_a * 1.0 / 3.0 * springs[i]->mass;
-			MatrixXd I12 = gamma_a.transpose() * gamma_b * 1.0 / 6.0 * springs[i]->mass;
-			MatrixXd I21 = gamma_b.transpose() * gamma_a * 1.0 / 6.0 * springs[i]->mass;
-			MatrixXd I22 = gamma_b.transpose() * gamma_b * 1.0 / 3.0 * springs[i]->mass;
-*/
 
-			MatrixXd I11 = IM.block<6,6>(0,0);
+			MatrixXd I11 = IM.block<6, 6>(0, 0);
 			MatrixXd I12 = IM.block<6, 6>(0, 6);
 			MatrixXd I21 = IM.block<6, 6>(6, 0);
 			MatrixXd I22 = IM.block<6, 6>(6, 6);
-
 
 			for (int ii = 0; ii < 6; ii++) {
 				for (int jj = 0; jj < 6; jj++) {
@@ -900,45 +887,32 @@ void RigidBody::updateInertia() {
 					A_.push_back(ETriplet(6 * ib + ii, 6 * ib + jj, I22(ii, jj)));
 				}
 			}
-
-			// used to compare if the material Jacobian is the same
-			/*cout << "non-fem:" << endl;
-			cout << "gamma_a :" << endl << gamma_a << endl;
-			cout << "gamma_b :" << endl << gamma_b << endl;
-			cout << "I11: " << endl << I11 << endl;
-			cout << "I12: " << endl << I12 << endl;*/
 		}
 	} else {
 		// Integrate inertia matrix and compute material Jacobian using finite difference with mass samples
 		// This method approximates the material Jacobian
 
 		for (int i = 0; i < springs.size(); i++) {
-
 			if (springs[i]->type == two_end_rbs) {
 				int ia = springs[i]->i;
 				int ib = springs[i]->k;
 				auto b0 = bodies[ia];
 				auto b1 = bodies[ib];
-				muscle_density = springs[i]->mass / (springs[i]->p1->x - springs[i]->p0->x).norm();
+				double len = (springs[i]->p1->x - springs[i]->p0->x).norm();
+				muscle_density = springs[i]->mass;
 
 				// The approximated material Jacobian matrix of rb0, rb1
-				MatrixXd J0, J1;
-				J0.resize(3, 6);
-				J1.resize(3, 6);
+				Matrix3x6d J0, J1;
 				J0.setZero();
 				J1.setZero();
 
-				VectorXd pert;
-				pert.resize(6);
-
+				Vector6d pert;
 				// for each component of phi(i = 0, 1, 2..,11) add a relative small perturbation
 				for (int k = 0; k < 6; k++) {
 
 					pert.setZero();
 					pert(k) = 1.0 * epsilon; // change kth component
-
 					MatrixXd E_pert = b0->E * vec2crossmatrix(pert).exp();
-
 					// Compute position of the end point p0 of spring
 					Vector3d p_pert = transform(E_pert, springs[i]->p0->x0);
 					J0.block(0, k, 3, 1) = 1.0 / epsilon * (p_pert - springs[i]->p0->x);
@@ -955,12 +929,64 @@ void RigidBody::updateInertia() {
 					J1.block(0, k, 3, 1) = 1.0 / epsilon * (p_pert - springs[i]->p1->x);
 				}
 
-				MatrixXd I11 = J0.transpose() * J0 * 1.0 / 3.0 * muscle_density;
-				MatrixXd I12 = J0.transpose() * J1 * 1.0 / 6.0 * muscle_density;
-				MatrixXd I21 = J1.transpose() * J0 * 1.0 / 6.0 * muscle_density;
-				MatrixXd I22 = J1.transpose() * J1 * 1.0 / 3.0 * muscle_density;
+				Matrix3x12d Jt;
+				//Jt.block<3, 6>(0, 0) = J0;
+				//Jt.block<3, 6>(0, 6) = J1;
 
-				// Update the inertia matrix
+			//	MatrixXd I11 = J0.transpose() * J0 * 1.0 / 3.0 * muscle_density;
+			//	MatrixXd I12 = J0.transpose() * J1 * 1.0 / 6.0 * muscle_density;
+			//	MatrixXd I21 = J1.transpose() * J0 * 1.0 / 6.0 * muscle_density;
+			//	MatrixXd I22 = J1.transpose() * J1 * 1.0 / 3.0 * muscle_density;
+
+			//	// Update the inertia matrix
+			//for (int ii = 0; ii < 6; ii++) {
+			//		for (int jj = 0; jj < 6; jj++) {
+			//			A_.push_back(ETriplet(6 * ia + ii, 6 * ia + jj, I11(ii, jj)));
+			//			A_.push_back(ETriplet(6 * ia + ii, 6 * ib + jj, I12(ii, jj)));
+			//			A_.push_back(ETriplet(6 * ib + ii, 6 * ia + jj, I21(ii, jj)));
+			//			A_.push_back(ETriplet(6 * ib + ii, 6 * ib + jj, I22(ii, jj)));
+			//		}
+			//	}
+		
+				// Add gravity force 
+				Vector3d fg = springs[i]->mass * g;
+				Vector12d wrench = Jt.transpose() * fg; 
+
+				Jt.setZero();
+				double dl = len / (numFinitePoints - 1);
+				double ss;
+				double dm = springs[i]->mass / numFinitePoints;
+				Vector3d dfg = dm * g;
+				Matrix12d IM; // add to body0 and body1
+				IM.setZero();
+				auto n0 = b0->nodes[springs[i]->in];
+				auto n1 = b1->nodes[springs[i]->kn];
+
+				for (int z = 0; z < numFinitePoints; z++) {
+					ss = dl * z / len;
+
+					gamma.block<3, 3>(0, 0) = vec2crossmatrix(n0->x0).transpose();
+					MatrixXd gamma_a = (b0->R * gamma);
+					gamma_k.block<3, 3>(0, 0) = vec2crossmatrix(n1->x0).transpose();
+					MatrixXd gamma_b = (b1->R * gamma_k);
+					Jt.block<3, 6>(0, 0) = (1 - ss) * gamma_a;
+					Jt.block<3, 6>(0, 6) = ss * gamma_b;
+
+					MatrixXd It = Jt.transpose() * Jt * dm; // It:12x12
+					IM += It;
+
+					// compute the pos of z th point
+					Vector3d zpoint = springs[i]->p0->x * (1 - ss) + springs[i]->p1->x * ss;
+					Vector12d wr = Jt.transpose() * dfg;
+					bodies[ia]->setBodyForce(wr.segment<6>(0));
+					bodies[ib]->setBodyForce(wr.segment<6>(6));
+				}
+				
+				Matrix6d I11 = IM.block<6, 6>(0, 0);
+				Matrix6d I12 = IM.block<6, 6>(0, 6);
+				Matrix6d I21 = IM.block<6, 6>(6, 0);
+				Matrix6d I22 = IM.block<6, 6>(6, 6);
+
 				for (int ii = 0; ii < 6; ii++) {
 					for (int jj = 0; jj < 6; jj++) {
 						A_.push_back(ETriplet(6 * ia + ii, 6 * ia + jj, I11(ii, jj)));
@@ -969,24 +995,6 @@ void RigidBody::updateInertia() {
 						A_.push_back(ETriplet(6 * ib + ii, 6 * ib + jj, I22(ii, jj)));
 					}
 				}
-		
-				// Add gravity force 
-				Vector3d fg = 0.5 *springs[i]->mass * g;
-				MatrixXd Jt;
-				Jt.resize(3, 12);
-				Jt.block<3, 6>(0, 0) = J0;
-				Jt.block<3, 6>(0, 6) = J1;
-
-				VectorXd wrench = Jt.transpose() * fg; // 12x1
-				bodies[ia]->setBodyForce(wrench.segment<6>(0));
-				bodies[ib]->setBodyForce(wrench.segment<6>(6));
-				
-				// Used to compare if the material Jacobian is the same
-				/*cout << "fem: " << endl;
-				cout << "J0: " << endl << J0 << endl;
-				cout << "J1: " << endl << J1 << endl;
-				cout << "I11: " << endl << I11 << endl;
-				cout << "I12: " << endl << I12 << endl;*/
 			}
 		}
 
@@ -1001,13 +1009,8 @@ void RigidBody::updateInertia() {
 			double total_length = c->l;
 			muscle_density = c->mass / total_length;
 
-			MatrixXd IM; // add to body0 and body1
-			IM.resize(12, 12);
+			Matrix12d IM; // add to body0 and body1
 			IM.setZero();
-
-			double kinetic_energy = 0.0;
-			double potential_energy = 0.0;
-
 
 			if (wpc_stat[i] == wrap) {
 
@@ -1025,8 +1028,7 @@ void RigidBody::updateInertia() {
 				count[2] = floor(length[2] / dl);					// the number of elements in path C2 to S
 				count[1] = numElements - count[0] - count[2];		// the number of elements in path C1 to C2
 
-				VectorXd pert;
-				pert.resize(6);
+				Vector6d pert;
 
 				wpc_pert.setZero();
 
@@ -1178,14 +1180,11 @@ void RigidBody::updateInertia() {
 							test_pts_pert.block<3, 1>(0, id) = p_pert;
 						}
 
-						//cout << "diff: " << 1.0 / epsilon *( p_pert - p_nopert ) << endl;
 						J.block(3 * id, k, 3, 1) = 1.0 / epsilon * (p_pert - p_nopert);
 					}
 				}
 
-
-				VectorXd phi12;
-				phi12.resize(12);
+				Vector12d phi12;
 				phi12.segment<6>(0) = b0->Phi;
 				phi12.segment<6>(6) = b1->Phi;
 
@@ -1193,31 +1192,21 @@ void RigidBody::updateInertia() {
 				// Compute the total kinetic energy of a muscle
 				for (int t = 0; t < numElements; t++) {
 					
-					MatrixXd Jt = J.block(3 * t, 0, 3, 12);
-					MatrixXd It = Jt.transpose() * Jt * dm; // It:12x12
+					Matrix3x12d Jt = J.block(3 * t, 0, 3, 12);
+					Matrix12d It = Jt.transpose() * Jt * dm; 
 					IM += It;
 
-					double ke = 0.5 * phi12.transpose() * IM * phi12;
-					kinetic_energy += ke;
-
-					double pe = dm * g.transpose() * test_pts.block<3, 1>(0, t);
-					//cout << "pe: " << pe << endl;
-					potential_energy += pe;
-
 					// Add gravity force for each sample
-					Vector3d fg = dm * g;
-
-					VectorXd wrench = Jt.transpose() * fg; // 12x1
+					Vector3d fg =  dm * g;
+					Vector12d wrench = Jt.transpose() * fg; 
 					bodies[ia]->setBodyForce(wrench.segment<6>(0));
 					bodies[ib]->setBodyForce(wrench.segment<6>(6));
-
 				}
-				double total_energy = kinetic_energy - potential_energy;
 
-				MatrixXd I11 = IM.block<6, 6>(0, 0);
-				MatrixXd I12 = IM.block<6, 6>(0, 6);
-				MatrixXd I21 = IM.block<6, 6>(6, 0);
-				MatrixXd I22 = IM.block<6, 6>(6, 6);
+				Matrix6d I11 = IM.block<6, 6>(0, 0);
+				Matrix6d I12 = IM.block<6, 6>(0, 6);
+				Matrix6d I21 = IM.block<6, 6>(6, 0);
+				Matrix6d I22 = IM.block<6, 6>(6, 6);
 
 				for (int ii = 0; ii < 6; ii++) {
 					for (int jj = 0; jj < 6; jj++) {
@@ -1227,20 +1216,19 @@ void RigidBody::updateInertia() {
 						A_.push_back(ETriplet(6 * ib + ii, 6 * ib + jj, I22(ii, jj)));
 					}
 				}
-
 			}
 			else {
 
 				// if the status is not wrapped, update inertia the same way as springs
 				gamma.block<3, 3>(0, 0) = vec2crossmatrix(c->P->x0).transpose();
-				MatrixXd gamma_a = (b0->R * gamma);
+				Matrix3d gamma_a = (b0->R * gamma);
 				gamma_k.block<3, 3>(0, 0) = vec2crossmatrix(c->S->x0).transpose();
-				MatrixXd gamma_b = (b1->R * gamma_k);
+				Matrix3d gamma_b = (b1->R * gamma_k);
 
-				MatrixXd I11 = gamma_a.transpose() * gamma_a * 1.0 / 3.0 * muscle_density;
-				MatrixXd I12 = gamma_a.transpose() * gamma_b * 1.0 / 6.0 * muscle_density;
-				MatrixXd I21 = gamma_b.transpose() * gamma_a * 1.0 / 6.0 * muscle_density;
-				MatrixXd I22 = gamma_b.transpose() * gamma_b * 1.0 / 3.0 * muscle_density;
+				Matrix6d I11 = gamma_a.transpose() * gamma_a * 1.0 / 3.0 * muscle_density;
+				Matrix6d I12 = gamma_a.transpose() * gamma_b * 1.0 / 6.0 * muscle_density;
+				Matrix6d I21 = gamma_b.transpose() * gamma_a * 1.0 / 6.0 * muscle_density;
+				Matrix6d I22 = gamma_b.transpose() * gamma_b * 1.0 / 3.0 * muscle_density;
 
 				for (int ii = 0; ii < 6; ii++) {
 					for (int jj = 0; jj < 6; jj++) {
@@ -1265,6 +1253,12 @@ void RigidBody::setObjective(double h) {
 			A_.push_back(ETriplet(6 * i + j, 6 * i + j, bodies[i]->M(j, j)));
 		}
 	}
+	
+	Ao.resize(numVars, numVars);
+	Ao.setFromTriplets(A_.begin(), A_.end());
+	
+	Aold = MatrixXd(Ao);
+
 	updateInertia();
 
 	A.resize(numVars, numVars);
@@ -1272,7 +1266,6 @@ void RigidBody::setObjective(double h) {
 	program->setObjectiveMatrix(A);
 	
 	// Initialize b vector
-
 	if (numSprings != 0) {
 		//computeSpringForces();
 	}
@@ -1303,29 +1296,16 @@ void RigidBody::setObjective(double h) {
 		PhiT.block(6 * i, 6 * i, 6, 6) = bodies[i]->PhiT;
 	}
 
-	RHS = Adense * twists + h * (PhiT * Adense * twists + bodyforces);
-
-	/*
-	//only used when the inertia is unchanged during simulation
-	for (int i = 0; i < numRB; i++) {
-	RHS.segment<6>(6 * i) = bodies[i]->computeForces(h);
-	}*/
+	RHS = Adense * twists + h * (PhiT * Aold * twists + bodyforces);
 	program->setObjectiveVector(-RHS);
 }
 
 void RigidBody::postStabilization(int &currentrow) {
-
 	equalvec.resize(numEqualities);
 	equalvec.setZero();
-
 	G_.clear();
-
-	MatrixXd Gi, Gk;
-	Gi.resize(6, 6);
-	Gk.resize(6, 6);
-
-	MatrixXd j0toB;
-	j0toB.resize(4, 4);
+	Matrix6d Gi, Gk;
+	Matrix4d j0toB;
 	j0toB.setZero();
 	j0toB.block<3, 3>(0, 0) = I;
 	j0toB.block<3, 1>(0, 3) << 0.0, dimensions(1)*0.5, 0.0;
@@ -1516,77 +1496,83 @@ void RigidBody::computeSpringEnergy() {
 			int ib = springs[i]->k;
 			auto b0 = bodies[ia];
 			auto b1 = bodies[ib];
-			muscle_density = springs[i]->mass / (springs[i]->p0->x - springs[i]->p1->x).norm();;
+			double len = (springs[i]->p0->x - springs[i]->p1->x).norm();
+			muscle_density = springs[i]->mass ;
 
 			// The approximated material Jacobian matrix of rb0, rb1
-			MatrixXd J0, J1;
-			J0.resize(3, 6);
-			J1.resize(3, 6);
+			Matrix3x6d J0, J1;	
 			J0.setZero();
 			J1.setZero();
 
-			VectorXd pert;
-			pert.resize(6);
-
+			Vector6d pert;
 			// for each component of phi(i = 0, 1, 2..,11) add a relative small perturbation
 			for (int k = 0; k < 6; k++) {
 
 				pert.setZero();
 				pert(k) = 1.0 * epsilon; // change kth component
-				MatrixXd E_pert = b0->E * vec2crossmatrix(pert).exp();
+				Matrix4d E_pert = b0->E * vec2crossmatrix(pert).exp();
 				// Compute position of the end point p0 of spring
 				Vector3d p_pert = transform(E_pert, springs[i]->p0->x0);
 				J0.block(0, k, 3, 1) = 1.0 / epsilon * (p_pert - springs[i]->p0->x);
 			}
 
 			for (int k = 0; k < 6; k++) {
-
 				pert.setZero();
 				pert(k) = 1.0 * epsilon;
-				MatrixXd E_pert = b1->E * vec2crossmatrix(pert).exp();
+				Matrix4d E_pert = b1->E * vec2crossmatrix(pert).exp();
 				Vector3d p_pert = transform(E_pert, springs[i]->p1->x0);
 				J1.block(0, k, 3, 1) = 1.0 / epsilon * (p_pert - springs[i]->p1->x);
 			}
 
-			MatrixXd I11 = J0.transpose() * J0 * 1.0 / 3.0 * muscle_density;
-			MatrixXd I12 = J0.transpose() * J1 * 1.0 / 6.0 * muscle_density;
-			MatrixXd I21 = J1.transpose() * J0 * 1.0 / 6.0 * muscle_density;
-			MatrixXd I22 = J1.transpose() * J1 * 1.0 / 3.0 * muscle_density;
-
-			MatrixXd Jt;
-			Jt.resize(3, 12);
+			Matrix3x12d Jt;
 			Jt.block<3, 6>(0, 0) = J0;
 			Jt.block<3, 6>(0, 6) = J1;
 
-			VectorXd phi12;
-			phi12.resize(12);
-			phi12.segment<6>(0) = b0->Phi;
-			phi12.segment<6>(6) = b1->Phi;
+			Matrix6d I11 = J0.transpose() * J0 * 1.0 / 3.0 * muscle_density;
+			Matrix6d I12 = J0.transpose() * J1 * 1.0 / 6.0 * muscle_density;
+			Matrix6d I21 = J1.transpose() * J0 * 1.0 / 6.0 * muscle_density;
+			Matrix6d I22 = J1.transpose() * J1 * 1.0 / 3.0 * muscle_density;
 
-			MatrixXd IM; // add to body0 and body1
-			IM.resize(12, 12);
-			IM.setZero();
-			double len = (springs[i]->p0->x - springs[i]->p1->x).norm();
-
+			Matrix12d IM; // add to body0 and body1
 			// Compute the total kinetic energy of a muscle
-
 			IM.block<6, 6>(0, 0) = I11;
 			IM.block<6, 6>(0, 6) = I12;
 			IM.block<6, 6>(6, 0) = I21;
 			IM.block<6, 6>(6, 6) = I22;
-			VectorXd PHIM;
-			PHIM.resize(12);
+
+			Vector12d PHIM;
 			PHIM.setZero();
 			PHIM.segment<6>(0) = b0->Phi;
 			PHIM.segment<6>(6) = b1->Phi;
 
-			double ke = 0.5 * PHIM.transpose() * IM * PHIM;
-
 			// Compute the total potential energy of a muscle
-			double pe = springs[i]->mass * 0.5 * g.transpose() * (springs[i]->p0->x + springs[i]->p1->x);
-		
-			spring_pe += pe;
-			spring_ke += ke;
+			double dl = len / (numFinitePoints - 1);
+			double ss;
+			double dm = springs[i]->mass / numFinitePoints;
+			Vector3d dfg = dm * g;
+			auto n0 = b0->nodes[springs[i]->in];
+			auto n1 = b1->nodes[springs[i]->kn];
+	
+			IM.setZero();
+			Jt.setZero();
+
+			for (int z = 0; z < numFinitePoints; z++) {
+				MatrixXd It = Jt.transpose() * Jt * dm; // It:12x12
+				IM += It;
+				// compute the pos of z th point
+				ss = dl * z / len;
+				Vector3d zpoint = springs[i]->p0->x * (1 - ss) + springs[i]->p1->x * ss;	
+				double pe = dm * g.transpose() * zpoint;
+				gamma.block<3, 3>(0, 0) = vec2crossmatrix(n0->x0).transpose();
+				MatrixXd gamma_a = (b0->R * gamma);
+				gamma_k.block<3, 3>(0, 0) = vec2crossmatrix(n1->x0).transpose();
+				MatrixXd gamma_b = (b1->R * gamma_k);
+				Jt.block<3, 6>(0, 0) = (1 - ss)*gamma_a;
+				Jt.block<3, 6>(0, 6) = ss * gamma_b;
+				Vector3d zvel = Jt * PHIM;
+				spring_ke += 0.5 * dm * zvel.transpose() * zvel;
+				spring_pe += pe;
+			}
 		}
 	}
 }
@@ -1603,8 +1589,7 @@ void RigidBody::computeCylinderEnergy() {
 		double total_length = c->l;
 		muscle_density = c->mass / total_length;
 
-		MatrixXd IM; // add to body0 and body1
-		IM.resize(12, 12);
+		Matrix12d IM; // add to body0 and body1
 		IM.setZero();
 
 		if (wpc_stat[i] == wrap) {
@@ -1623,9 +1608,7 @@ void RigidBody::computeCylinderEnergy() {
 			count[2] = floor(length[2] / dl);					// the number of elements in path C2 to S
 			count[1] = numElements - count[0] - count[2];		// the number of elements in path C1 to C2
 
-			VectorXd pert;
-			pert.resize(6);
-
+			Vector6d pert;
 			wpc_pert.setZero();
 
 			// Jacobians for all the points
@@ -1636,7 +1619,7 @@ void RigidBody::computeCylinderEnergy() {
 			for (int k = 0; k < 12; k++) {
 
 				pert.setZero();
-				MatrixXd E_nopert, E_pert;
+				Matrix4d E_nopert, E_pert;
 				// Compute the position after perturbation using wrapping
 				Vector3d O_pert, P_pert, S_pert, Z_pert;
 
@@ -1768,8 +1751,7 @@ void RigidBody::computeCylinderEnergy() {
 				}
 			}
 
-			VectorXd phi12;
-			phi12.resize(12);
+			Vector12d phi12;
 			phi12.segment<6>(0) = b0->Phi;
 			phi12.segment<6>(6) = b1->Phi;
 
@@ -1777,8 +1759,8 @@ void RigidBody::computeCylinderEnergy() {
 			// Compute the total kinetic energy of a muscle
 
 			for (int t = 0; t < numElements; t++) {
-				MatrixXd Jt = J.block(3 * t, 0, 3, 12);
-				MatrixXd It = Jt.transpose() * Jt * dm; // It:12x12
+				Matrix3x12d Jt = J.block(3 * t, 0, 3, 12);
+				Matrix12d It = Jt.transpose() * Jt * dm; 
 				IM += It;
 
 				double ke = 0.5 * phi12.transpose() * It * phi12;
@@ -1787,21 +1769,17 @@ void RigidBody::computeCylinderEnergy() {
 				cylinder_pe += pe;
 				cylinder_ke += ke;
 			}
-
 		}
 		else {
-
 			// if the status is not wrapped, update inertia the same way as springs
 			gamma.block<3, 3>(0, 0) = vec2crossmatrix(c->P->x0).transpose();
-			MatrixXd gamma_a = (b0->R * gamma);
+			Matrix3d gamma_a = (b0->R * gamma);
 			gamma_k.block<3, 3>(0, 0) = vec2crossmatrix(c->S->x0).transpose();
-			MatrixXd gamma_b = (b1->R * gamma_k);
-
-			MatrixXd I11 = gamma_a.transpose() * gamma_a * 1.0 / 3.0 * muscle_density;
-			MatrixXd I12 = gamma_a.transpose() * gamma_b * 1.0 / 6.0 * muscle_density;
-			MatrixXd I21 = gamma_b.transpose() * gamma_a * 1.0 / 6.0 * muscle_density;
-			MatrixXd I22 = gamma_b.transpose() * gamma_b * 1.0 / 3.0 * muscle_density;
-
+			Matrix3d gamma_b = (b1->R * gamma_k);
+			Matrix6d I11 = gamma_a.transpose() * gamma_a * 1.0 / 3.0 * muscle_density;
+			Matrix6d I12 = gamma_a.transpose() * gamma_b * 1.0 / 6.0 * muscle_density;
+			Matrix6d I21 = gamma_b.transpose() * gamma_a * 1.0 / 6.0 * muscle_density;
+			Matrix6d I22 = gamma_b.transpose() * gamma_b * 1.0 / 3.0 * muscle_density;
 		}
 	}
 }
